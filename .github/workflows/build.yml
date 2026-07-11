@@ -19,19 +19,15 @@ jobs:
           - name: macOS Apple Silicon
             os: macos-14
             command: pnpm exec electron-builder --mac --arm64 --publish never
-            artifact: dist/*.{dmg,zip}
           - name: macOS Intel
             os: macos-15-intel
             command: pnpm exec electron-builder --mac --x64 --publish never
-            artifact: dist/*.{dmg,zip}
           - name: Windows
             os: windows-latest
             command: pnpm exec electron-builder --win --x64 --publish never
-            artifact: dist/*.{exe,zip}
           - name: Linux
             os: ubuntu-latest
             command: pnpm exec electron-builder --linux --x64 --publish never
-            artifact: dist/*.{AppImage,deb}
 
     runs-on: ${{ matrix.os }}
     env:
@@ -52,7 +48,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Diskloom-${{ matrix.name }}
-          path: ${{ matrix.artifact }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
           if-no-files-found: error
 
   release:
