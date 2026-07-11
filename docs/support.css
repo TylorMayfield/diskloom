@@ -1,3 +1,10 @@
 .support { display: inline-block; margin-top: 17px; color: #cf8e72; font-size: 12px; }
 .support:hover { color: #f4b18f; }
 .support + .platforms { margin-top: 10px; }
+
+/* Let the icon's black source background inherit the hero gradient visually. */
+.icon-stage img {
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle, #000 0 76%, transparent 98%);
+  mask-image: radial-gradient(circle, #000 0 76%, transparent 98%);
+}
