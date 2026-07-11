@@ -1,6 +1,6 @@
 {
   "name": "diskloom",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": {
     "name": "Tylor Mayfield",
     "email": "TylorMayfield@users.noreply.github.com"
@@ -50,14 +50,16 @@
         "dmg",
         "zip"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Diskloom-mac-${arch}.${ext}"
     },
     "win": {
       "target": [
         "nsis",
         "zip"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Diskloom-windows-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -65,7 +67,8 @@
         "deb"
       ],
       "category": "Utility",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "Diskloom-linux-${arch}.${ext}"
     }
   },
   "packageManager": "pnpm@10.32.0"
