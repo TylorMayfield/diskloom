@@ -2,6 +2,8 @@
 
 A fast, private disk space explorer built with Electron, TypeScript, React, and Radix UI.
 
+[Support this free project on Ko-fi](https://ko-fi.com/tylormayfield)
+
 ## Development
 
 ```bash

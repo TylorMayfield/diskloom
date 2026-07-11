@@ -36,9 +36,9 @@
     "appId": "com.diskloom.app",
   "productName": "Diskloom",
     "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
-    "mac": { "category": "public.app-category.utilities", "target": "dmg", "icon": "build/icon.png" },
-    "win": { "target": "nsis" },
-    "linux": { "target": "AppImage", "category": "Utility" }
+    "mac": { "category": "public.app-category.utilities", "target": ["dmg", "zip"], "icon": "build/icon.png" },
+    "win": { "target": ["nsis", "zip"], "icon": "build/icon.png" },
+    "linux": { "target": ["AppImage", "deb"], "category": "Utility", "icon": "build/icon.png" }
   },
   "packageManager": "pnpm@10.32.0"
 }
