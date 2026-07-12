@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Table, Theme } from '@radix-ui/themes'
 import { ChevronDown, ChevronRight, Copy, ExternalLink, FolderOpen, LoaderCircle, Search, Trash2 } from 'lucide-react'
 import type { DuplicateAnalysisResult, DuplicateFile, DuplicateGroup, DuplicateProgress } from './types'
+import { track } from './analytics'
 
 type Props = {
   rootPath: string
@@ -86,6 +87,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
       }
       setSelected((current) => new Set([...current].filter((path) => !trashed.has(path))))
       onResultChange(next)
+      track('duplicate_cleanup_completed', { trashed_count: trashed.size, unsuccessful_count: unsuccessful.length })
       onMessage(`${trashed.size.toLocaleString()} file${trashed.size === 1 ? '' : 's'} moved to Trash${unsuccessful.length ? `; ${unsuccessful.length} skipped or failed` : ''}.`, unsuccessful.length > 0)
     } catch (cause) { onMessage(cause instanceof Error ? cause.message : 'Duplicate cleanup failed.', true) }
     finally { setCleaning(false) }

@@ -39,6 +39,13 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 
+ipcMain.handle('get-app-info', () => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  electronVersion: process.versions.electron,
+}))
+
 ipcMain.handle('pick-folder', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'], defaultPath: os.homedir() })
   return result.canceled ? null : result.filePaths[0]

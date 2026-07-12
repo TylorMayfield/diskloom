@@ -36,8 +36,10 @@ export type BenchmarkProgress = { completed: number; total: number; current: str
 export type BenchmarkResult = { id: string; label: string; detail: string; read: number; write: number; readVariation: number; writeVariation: number; readIops?: number; writeIops?: number }
 export type BenchmarkReport = { target: string; sizeMiB: number; runs: number; totalMemoryBytes: number; completedAt: string; results: BenchmarkResult[] }
 export type BenchmarkDrive = { id: string; name: string; mountPoint: string; totalBytes: number; freeBytes: number; readOnly: boolean }
+export type AppInfo = { version: string; platform: NodeJS.Platform; arch: string; electronVersion: string }
 
 export type DiskloomApi = {
+      getAppInfo(): Promise<AppInfo>
       pickFolder(): Promise<string | null>
       scan(path: string): Promise<ScanResult>
       reveal(path: string): Promise<void>

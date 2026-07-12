@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('diskloom', {
+  getAppInfo: () => ipcRenderer.invoke('get-app-info'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   scan: (path: string) => ipcRenderer.invoke('scan', path),
   reveal: (path: string) => ipcRenderer.invoke('reveal', path),

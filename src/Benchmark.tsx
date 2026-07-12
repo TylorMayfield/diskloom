@@ -3,6 +3,7 @@ import { Check, Copy, Gauge, Info, Play, RotateCw, Square } from 'lucide-react'
 import { Badge, Button, Card, Heading, Progress, Select, Text, Theme } from '@radix-ui/themes'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import type { BenchmarkDrive, BenchmarkProgress, BenchmarkReport } from './types'
+import { track } from './analytics'
 
 export function Benchmark({ target: initialTarget, onError }: { target?: string; onError: (message: string) => void }) {
   const [target, setTarget] = useState(initialTarget ?? '')
@@ -36,11 +37,13 @@ export function Benchmark({ target: initialTarget, onError }: { target?: string;
   const start = async () => {
     if (!target) return
     try {
+      track('benchmark_started', { runs, size_mib: sizeMiB })
       setRunning(true); setReport(null); setProgress({ completed: 0, total: (runs + 1) * 8, current: 'Preparing isolated workload files' })
       setReport(await window.diskloom.runBenchmark({ target, runs, sizeMiB }))
+      track('benchmark_completed', { runs, size_mib: sizeMiB })
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Benchmark failed.'
-      if (!message.toLowerCase().includes('cancel')) onError(message)
+      if (!message.toLowerCase().includes('cancel')) { track('benchmark_failed'); onError(message) }
     } finally { setRunning(false) }
   }
 
@@ -76,7 +79,7 @@ export function Benchmark({ target: initialTarget, onError }: { target?: string;
           <label>Runs<Select.Root value={String(runs)} disabled={running} onValueChange={(value) => setRuns(Number(value))}><Select.Trigger className="benchmark-select"/><Select.Content position="popper"><Select.Item value="1">1</Select.Item><Select.Item value="3">3</Select.Item><Select.Item value="5">5</Select.Item></Select.Content></Select.Root></label>
           <label>Test size<Select.Root value={String(sizeMiB)} disabled={running} onValueChange={(value) => setSizeMiB(Number(value))}><Select.Trigger className="benchmark-select"/><Select.Content position="popper"><Select.Item value="64">64 MiB</Select.Item><Select.Item value="128">128 MiB</Select.Item><Select.Item value="256">256 MiB</Select.Item><Select.Item value="512">512 MiB</Select.Item><Select.Item value="1024">1 GiB</Select.Item><Select.Item value="5120">5 GiB</Select.Item><Select.Item value="8192">8 GiB</Select.Item><Select.Item value="16384">16 GiB</Select.Item><Select.Item value="32768">32 GiB</Select.Item><Select.Item value="65536">64 GiB</Select.Item></Select.Content></Select.Root></label>
           {report && !running && <Button className="benchmark-copy" size="2" variant="soft" color={copied ? 'green' : 'gray'} onClick={() => void copyResults()}>{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copied' : 'Copy'}</Button>}
-          {running ? <Button className="benchmark-stop" size="2" variant="soft" color="red" onClick={() => void window.diskloom.cancelBenchmark()}><Square size={13}/> Stop</Button> : <Button className="benchmark-run" size="2" variant="solid" highContrast disabled={!target || selectedDrive?.readOnly || insufficientSpace} title={insufficientSpace ? 'Not enough free space for this test size' : undefined} onClick={() => void start()}><Play size={14} fill="currentColor"/> Run all</Button>}
+          {running ? <Button className="benchmark-stop" size="2" variant="soft" color="red" onClick={() => { track('benchmark_cancelled'); void window.diskloom.cancelBenchmark() }}><Square size={13}/> Stop</Button> : <Button className="benchmark-run" size="2" variant="solid" highContrast disabled={!target || selectedDrive?.readOnly || insufficientSpace} title={insufficientSpace ? 'Not enough free space for this test size' : undefined} onClick={() => void start()}><Play size={14} fill="currentColor"/> Run all</Button>}
         </div>
       </div>
       <div className="benchmark-progress"><Progress value={progressValue} size="1"/><Text as="span" size="1" color="gray">{running ? progress?.current : report ? `Completed ${new Date(report.completedAt).toLocaleTimeString()}` : 'Ready to test'}</Text></div>

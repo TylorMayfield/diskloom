@@ -6,6 +6,7 @@ import { ChevronRight, FolderOpen, Gauge, HardDrive, MoreHorizontal, Search, Tra
 import { Sunburst } from './Sunburst'
 import { Duplicates } from './Duplicates'
 import { Benchmark } from './Benchmark'
+import { configureAnalytics, setAnalyticsConsent, track, trackScreen } from './analytics'
 import type { DiskNode, DuplicateAnalysisResult, DuplicateProgress, ScanResult } from './types'
 
 const formatSize = (bytes: number) => {
@@ -14,6 +15,13 @@ const formatSize = (bytes: number) => {
   const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / 1024 ** unit).toFixed(unit > 2 ? 2 : unit ? 1 : 0)} ${units[unit]}`
 }
+
+const telemetryStorageKey = 'diskloom.telemetry-enabled'
+const savedTelemetryPreference = () => {
+  const value = localStorage.getItem(telemetryStorageKey)
+  return value === null ? null : value === 'true'
+}
+
 export function App() {
   const [scan, setScan] = useState<ScanResult | null>(null)
   const [selected, setSelected] = useState<DiskNode | null>(null)
@@ -27,19 +35,27 @@ export function App() {
   const [duplicateProgress, setDuplicateProgress] = useState<DuplicateProgress | null>(null)
   const [analyzingDuplicates, setAnalyzingDuplicates] = useState(false)
   const [notice, setNotice] = useState('')
+  const [telemetryEnabled, setTelemetryEnabled] = useState<boolean | null>(savedTelemetryPreference)
+  const [telemetryDialogOpen, setTelemetryDialogOpen] = useState(telemetryEnabled === null)
 
+  useEffect(() => { void window.diskloom.getAppInfo().then(configureAnalytics).catch(() => undefined) }, [])
+  useEffect(() => { if (telemetryEnabled !== null) setAnalyticsConsent(telemetryEnabled) }, [telemetryEnabled])
   useEffect(() => window.diskloom.onProgress(setProgress), [])
   useEffect(() => window.diskloom.onDuplicateProgress(setDuplicateProgress), [])
+  useEffect(() => { trackScreen(scan ? view : 'welcome') }, [scan, view, telemetryEnabled])
 
   const runScan = async (target?: string) => {
     try {
       const path = target ?? await window.diskloom.pickFolder()
       if (!path) return
+      track('scan_started')
       setBusy(true); setError(''); setProgress({ path, items: 0 })
       const result = await window.diskloom.scan(path)
       setScan(result); setSelected(result.root); setChartRoot(result.root)
       setDuplicates(null); setView('map'); setNotice('')
+      track('scan_completed', { duration_ms: Math.round(result.durationMs), item_count: result.itemCount, inaccessible_count: result.inaccessibleCount })
     } catch (cause) {
+      track('scan_failed')
       setError(cause instanceof Error ? cause.message : 'The scan could not be completed.')
     } finally { setBusy(false) }
   }
@@ -87,6 +103,7 @@ export function App() {
     try {
       setDeleting(node.path); setError('')
       await window.diskloom.trash(node.path)
+      track('item_trashed', { item_kind: node.kind })
       const [nextRoot] = removeNode(scan.root, node.path)
       if (!nextRoot) return
       const selectedPath = selected?.path
@@ -103,11 +120,20 @@ export function App() {
     if (!scan) return
     try {
       setAnalyzingDuplicates(true); setDuplicateProgress(null); setError(''); setNotice('')
-      setDuplicates(await window.diskloom.analyzeDuplicates(scan.root.path))
+      track('duplicate_analysis_started')
+      const result = await window.diskloom.analyzeDuplicates(scan.root.path)
+      setDuplicates(result)
+      track('duplicate_analysis_completed', { group_count: result.groups.length, duplicate_file_count: result.duplicateFileCount })
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Duplicate analysis failed.'
       if (!message.toLowerCase().includes('cancel')) setError(message)
     } finally { setAnalyzingDuplicates(false) }
+  }
+
+  const chooseTelemetry = (enabled: boolean) => {
+    localStorage.setItem(telemetryStorageKey, String(enabled))
+    setTelemetryEnabled(enabled)
+    setTelemetryDialogOpen(false)
   }
 
   return <Tooltip.Provider delayDuration={300}>
@@ -124,7 +150,7 @@ export function App() {
       : busy ? <main className="loading-state"><div className="scanner-orbit"><HardDrive size={38}/></div><h1>Mapping your disk</h1><p>{progress.items.toLocaleString()} items inspected</p><div className="progress-path">{progress.path}</div></main>
       : !scan ? <main className="welcome">
           <div className="welcome-art"><div className="orb orb-a"/><div className="orb orb-b"/><div className="orb orb-c"/><HardDrive size={58}/></div>
-          <h1>Find what’s filling<br/>your disk.</h1><p className="welcome-copy">A fast, private map of every folder. Nothing leaves your computer.</p>
+          <h1>Find what’s filling<br/>your disk.</h1><p className="welcome-copy">A fast, private map of every folder. File and folder data never leaves your computer.</p>
           <button className="hero-btn" onClick={() => void runScan()}><FolderOpen size={20}/> Choose a folder to scan</button>
         </main>
       : <><div className="result-tabs"><button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Disk Map</button><button className={view === 'duplicates' ? 'active' : ''} onClick={() => setView('duplicates')}>Duplicates{duplicates?.groups.length ? <span>{duplicates.groups.length}</span> : null}</button><button className={view === 'benchmark' ? 'active' : ''} onClick={() => setView('benchmark')}>Benchmark</button></div>{view === 'map' ? <main className="workspace">
@@ -147,10 +173,22 @@ export function App() {
               </Table.Root>{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
             </Theme>
           </aside>
-        </main> : view === 'duplicates' ? <Duplicates rootPath={scan.root.path} result={duplicates} progress={duplicateProgress} analyzing={analyzingDuplicates} onAnalyze={() => void analyzeDuplicateFiles()} onCancel={() => void window.diskloom.cancelDuplicateAnalysis()} onResultChange={setDuplicates} onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }} formatSize={formatSize}/> : <Benchmark target={scan.root.path} onError={setError}/>}</>}
+        </main> : view === 'duplicates' ? <Duplicates rootPath={scan.root.path} result={duplicates} progress={duplicateProgress} analyzing={analyzingDuplicates} onAnalyze={() => void analyzeDuplicateFiles()} onCancel={() => { track('duplicate_analysis_cancelled'); void window.diskloom.cancelDuplicateAnalysis() }} onResultChange={setDuplicates} onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }} formatSize={formatSize}/> : <Benchmark target={scan.root.path} onError={setError}/>}</>}
       {error && <div className="error-toast">{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
       {notice && <div className="notice-toast">{notice}<button onClick={() => setNotice('')}><X size={16}/></button></div>}
-      <footer className="support-footer"><span>Diskloom is free and open source.</span><a href="https://ko-fi.com/tylormayfield" target="_blank" rel="noreferrer">Support on Ko-fi ♡</a><i aria-hidden="true">·</i><a href="https://tylor.nz" target="_blank" rel="noreferrer">Tylor.nz ↗</a></footer>
+      <footer className="support-footer"><span>Diskloom is free and open source.</span><button className="telemetry-link" onClick={() => setTelemetryDialogOpen(true)}>Telemetry: {telemetryEnabled === null ? 'Not set' : telemetryEnabled ? 'On' : 'Off'}</button><i aria-hidden="true">·</i><a href="https://ko-fi.com/tylormayfield" target="_blank" rel="noreferrer">Support on Ko-fi ♡</a><i aria-hidden="true">·</i><a href="https://tylor.nz" target="_blank" rel="noreferrer">Tylor.nz ↗</a></footer>
+      {telemetryDialogOpen && <div className="telemetry-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && telemetryEnabled !== null) setTelemetryDialogOpen(false) }}>
+        <section className="telemetry-dialog" role="dialog" aria-modal="true" aria-labelledby="telemetry-title" aria-describedby="telemetry-description">
+          {telemetryEnabled !== null && <button className="telemetry-close" aria-label="Close telemetry settings" onClick={() => setTelemetryDialogOpen(false)}><X size={17}/></button>}
+          <div className="telemetry-mark"><Gauge size={28}/></div>
+          <p className="eyebrow">PRIVACY CHOICE</p>
+          <h2 id="telemetry-title">Help improve Diskloom?</h2>
+          <p id="telemetry-description">Allow anonymous usage analytics so we can understand app versions, platforms, and which features are useful.</p>
+          <ul><li>Collected: app version, operating system, feature usage, and coarse operation counts and timing.</li><li>Never collected: paths, filenames, file contents, hashes, drive names, or benchmark results.</li></ul>
+          <p className="telemetry-status">{telemetryEnabled === null ? 'Nothing will be sent unless you allow it.' : <>Telemetry is currently <b>{telemetryEnabled ? 'on' : 'off'}</b>.</>} You can change this anytime from the footer.</p>
+          <div className="telemetry-actions"><button className="secondary-btn" onClick={() => chooseTelemetry(false)}>Don’t share</button><button className="primary-btn" onClick={() => chooseTelemetry(true)}>Allow anonymous analytics</button></div>
+        </section>
+      </div>}
     </div>
   </Tooltip.Provider>
 }
