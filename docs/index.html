@@ -9,11 +9,12 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="support.css">
   <link rel="stylesheet" href="downloads.css">
+  <link rel="stylesheet" href="benchmark.css">
 </head>
 <body>
   <nav>
     <a class="wordmark" href="#">Diskloom</a>
-    <div><a href="#features">Features</a><a href="https://ko-fi.com/tylormayfield">Support</a><a href="https://github.com/TylorMayfield/diskloom">GitHub</a></div>
+    <div><a href="#benchmark">Benchmark</a><a href="#features">Features</a><a href="https://ko-fi.com/tylormayfield">Support</a><a href="https://github.com/TylorMayfield/diskloom">GitHub</a></div>
   </nav>
   <main>
     <section class="hero">
@@ -54,10 +55,32 @@
         <div class="files"><p>SELECTED ITEM</p><h2>Applications</h2><div class="size"><span>Size on disk</span><b>128.4 GB</b></div><ul><li><i class="purple"></i><span>Developer</span><b>54.8 GB</b></li><li><i class="orange"></i><span>Creative</span><b>31.2 GB</b></li><li><i class="red"></i><span>Utilities</span><b>18.7 GB</b></li></ul></div>
       </div>
     </section>
+    <section id="benchmark" class="benchmark-showcase">
+      <div class="benchmark-copy">
+        <p class="eyebrow">DISK BENCHMARK</p>
+        <h2>Measure more than capacity.</h2>
+        <p>Test real read and write performance without leaving Diskloom. Compare large transfers with everyday random access across every writable drive.</p>
+        <ul>
+          <li><i></i><span><b>Sequential and random workloads</b><small>SEQ1M and RND4K tests at multiple queue depths.</small></span></li>
+          <li><i></i><span><b>Throughput, IOPS, and variability</b><small>Median results make noisy runs easier to understand.</small></span></li>
+          <li><i></i><span><b>You control the workload</b><small>Choose 1–5 runs and test files from 64 MiB to 64 GiB.</small></span></li>
+        </ul>
+      </div>
+      <div class="benchmark-demo" aria-label="Sample Diskloom benchmark results">
+        <div class="benchmark-demo-head"><span><i></i><i></i><i></i></span><b>System performance</b><em>Sample result</em></div>
+        <div class="benchmark-columns"><span>TEST</span><b>READ <small>MB/s</small></b><b>WRITE <small>MB/s</small></b></div>
+        <div class="benchmark-result"><span><b>SEQ1M</b><small>Q8T1</small></span><strong class="read">3,842<small>±1.2%</small></strong><strong class="write">3,116<small>±1.7%</small></strong></div>
+        <div class="benchmark-result"><span><b>SEQ1M</b><small>Q1T1</small></span><strong class="read">2,961<small>±0.9%</small></strong><strong class="write">2,744<small>±1.1%</small></strong></div>
+        <div class="benchmark-result"><span><b>RND4K</b><small>Q32T1</small></span><strong class="read">812<small>207,872 IOPS</small></strong><strong class="write">645<small>165,120 IOPS</small></strong></div>
+        <div class="benchmark-result"><span><b>RND4K</b><small>Q1T1</small></span><strong class="read">72<small>18,432 IOPS</small></strong><strong class="write">61<small>15,616 IOPS</small></strong></div>
+        <p>Results are medians · Warm-up pass excluded</p>
+      </div>
+    </section>
     <section id="features" class="features">
       <article><span>01</span><h3>Fast by design</h3><p>Bounded, concurrent scanning keeps resource use low and the interface responsive.</p></article>
       <article><span>02</span><h3>Visual drill-down</h3><p>Click any folder to recalculate the radial map around exactly what’s inside.</p></article>
       <article><span>03</span><h3>Completely private</h3><p>Your filesystem data stays on your computer. No account, cloud, or telemetry.</p></article>
+      <article><span>04</span><h3>Built-in benchmarking</h3><p>Measure sequential and random read/write performance with adjustable workloads.</p></article>
     </section>
   </main>
   <footer><span>Diskloom</span><p>Free and open source.</p><a href="https://ko-fi.com/tylormayfield">Support on Ko-fi ♡</a><a href="https://github.com/TylorMayfield/diskloom">GitHub ↗</a></footer>
