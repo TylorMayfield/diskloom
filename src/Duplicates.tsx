@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import { Table, Theme } from '@radix-ui/themes'
 import { ChevronDown, ChevronRight, Copy, ExternalLink, FolderOpen, LoaderCircle, Search, Trash2 } from 'lucide-react'
 import type { DuplicateAnalysisResult, DuplicateFile, DuplicateGroup, DuplicateProgress } from './types'
 
@@ -102,11 +103,31 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
 
   return <section className="duplicates-results">
     <div className="duplicates-summary"><div><p className="eyebrow">RECLAIMABLE SPACE</p><strong>{formatSize(result.totalWastedSpace)}</strong></div><div><b>{result.groups.length.toLocaleString()}</b><span>duplicate groups</span></div><div><b>{result.duplicateFileCount.toLocaleString()}</b><span>extra copies</span></div><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></div>
-    <div className="duplicate-groups">{result.groups.map((group) => {
+    <Theme className="duplicate-table-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
+    <div className="duplicate-table-wrap"><Table.Root className="duplicate-table" variant="surface" layout="fixed" size="2">
+      <Table.Header><Table.Row>
+        <Table.ColumnHeaderCell width="44px"><span className="sr-only">Trash selection</span></Table.ColumnHeaderCell>
+        <Table.ColumnHeaderCell>File</Table.ColumnHeaderCell>
+        <Table.ColumnHeaderCell width="180px">Modified</Table.ColumnHeaderCell>
+        <Table.ColumnHeaderCell width="110px" justify="end">Size</Table.ColumnHeaderCell>
+        <Table.ColumnHeaderCell width="100px">Retention</Table.ColumnHeaderCell>
+        <Table.ColumnHeaderCell width="82px"><span className="sr-only">Actions</span></Table.ColumnHeaderCell>
+      </Table.Row></Table.Header>
+      <Table.Body>{result.groups.map((group) => {
       const open = expanded.has(group.id), keep = retained[group.id]
-      return <article className="duplicate-card" key={group.id}><button className="duplicate-card-head" onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(group.id) : next.add(group.id); return next })}>{open ? <ChevronDown/> : <ChevronRight/>}<div><b>{group.files.every((file) => file.name === group.files[0].name) ? group.files[0].name : 'Matching files'}</b><span>{group.files.length} copies · {formatSize(group.size)} each</span></div><strong>{formatSize(group.wastedSpace)} wasted</strong></button>
-      {open && <div className="duplicate-files">{group.files.map((file) => <div className={`duplicate-file ${file.path === keep ? 'kept' : ''}`} key={file.path}><input type="checkbox" checked={selected.has(file.path)} disabled={file.path === keep} aria-label={`Select ${file.name} for Trash`} onChange={(event) => setSelected((current) => { const next = new Set(current); event.target.checked ? next.add(file.path) : next.delete(file.path); return next })}/><div className="duplicate-file-info"><b>{file.name}</b><span>{file.parentPath}</span><small>Modified {dateText(file.modifiedAt)} · Created {dateText(file.createdAt)}</small></div><button className="keep-btn" onClick={() => chooseRetained(group, file.path)}>{file.path === keep ? 'Keeping' : 'Keep this'}</button><button className="mini-btn" title="Open file" onClick={() => void window.diskDaddy.openPath(file.path)}><ExternalLink size={15}/></button><button className="mini-btn" title="Show in folder" onClick={() => void window.diskDaddy.reveal(file.path)}><FolderOpen size={15}/></button></div>)}</div>}
-      </article>})}</div>
+      return <Fragment key={group.id}><Table.Row className="duplicate-group-row">
+        <Table.Cell colSpan={6}><button className="duplicate-group-toggle" aria-expanded={open} onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(group.id) : next.add(group.id); return next })}>{open ? <ChevronDown size={17}/> : <ChevronRight size={17}/>}<span><b>{group.files.every((file) => file.name === group.files[0].name) ? group.files[0].name : 'Matching files'}</b><small>{group.files.length} copies · {formatSize(group.size)} each</small></span><strong>{formatSize(group.wastedSpace)} wasted</strong></button></Table.Cell>
+      </Table.Row>
+        {open && group.files.map((file) => <Table.Row className={file.path === keep ? 'duplicate-data-row kept' : 'duplicate-data-row'} key={file.path}>
+          <Table.Cell><input type="checkbox" checked={selected.has(file.path)} disabled={file.path === keep} aria-label={`Select ${file.name} for Trash`} onChange={(event) => setSelected((current) => { const next = new Set(current); event.target.checked ? next.add(file.path) : next.delete(file.path); return next })}/></Table.Cell>
+          <Table.RowHeaderCell><div className="duplicate-file-info"><b>{file.name}</b><span title={file.parentPath}>{file.parentPath}</span><small>Created {dateText(file.createdAt)}</small></div></Table.RowHeaderCell>
+          <Table.Cell className="duplicate-date">{dateText(file.modifiedAt)}</Table.Cell>
+          <Table.Cell justify="end" className="duplicate-size">{formatSize(file.size)}</Table.Cell>
+          <Table.Cell><button className="keep-btn" onClick={() => chooseRetained(group, file.path)}>{file.path === keep ? 'Keeping' : 'Keep this'}</button></Table.Cell>
+          <Table.Cell><div className="duplicate-actions"><button className="mini-btn" aria-label={`Open ${file.name}`} title="Open file" onClick={() => void window.diskDaddy.openPath(file.path)}><ExternalLink size={15}/></button><button className="mini-btn" aria-label={`Show ${file.name} in folder`} title="Show in folder" onClick={() => void window.diskDaddy.reveal(file.path)}><FolderOpen size={15}/></button></div></Table.Cell>
+        </Table.Row>)}</Fragment>
+      })}</Table.Body>
+    </Table.Root></div></Theme>
     <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => void clean()}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
   </section>
 }

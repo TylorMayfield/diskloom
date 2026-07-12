@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { DataList, Table, Theme } from '@radix-ui/themes'
 import { ChevronRight, FolderOpen, HardDrive, MoreHorizontal, Search, Trash2, X } from 'lucide-react'
 import { Sunburst } from './Sunburst'
 import { Duplicates } from './Duplicates'
@@ -126,14 +127,27 @@ export function App() {
       : <><div className="result-tabs"><button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Disk Map</button><button className={view === 'duplicates' ? 'active' : ''} onClick={() => setView('duplicates')}>Duplicates{duplicates?.groups.length ? <span>{duplicates.groups.length}</span> : null}</button></div>{view === 'map' ? <main className="workspace">
           <section className="visual-panel"><Sunburst root={chartRoot ?? scan.root} selected={selected ?? scan.root} onSelect={inspectNode} formatSize={formatSize}/><div className="legend"><span><i className="dot folder-dot"/>Folders</span><span><i className="dot file-dot"/>Files</span><span>{scan.itemCount.toLocaleString()} items · {(scan.durationMs / 1000).toFixed(1)}s</span></div></section>
           <aside className="details-panel">
-            <div className="details-heading"><div><p className="eyebrow">SELECTED ITEM</p><h2>{selected?.name}</h2></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.reveal(selected.path)}>Show in folder</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
-            <p className="detail-path">{selected?.path}</p><div className="size-card"><span>Size on disk</span><strong>{formatSize(selected?.size ?? 0)}</strong><small>{chartRoot?.size ? ((selected?.size ?? 0) / chartRoot.size * 100).toFixed(1) : 0}% of current view</small></div>
-            <div className="list-heading"><span>Contents</span><span>Size</span></div><div className="file-list">{selected?.children?.slice(0, 60).map((child) => <div className="file-row" key={child.path + child.name}><button className="file-row-main" onClick={() => inspectNode(child)}><span className={`file-icon ${child.kind}`}>{child.kind === 'folder' ? '◼' : '●'}</span><span className="file-info"><b>{child.name}</b><small>{child.kind}</small></span><span className="file-size">{formatSize(child.size)}</span><ChevronRight size={15}/></button>{(child.kind === 'file' || child.kind === 'folder') && <button className="row-delete" disabled={deleting === child.path} aria-label={`Move ${child.name} to Trash`} title="Move to Trash" onClick={() => void trashNode(child)}><Trash2 size={14}/></button>}</div>)}{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
+            <div className="details-heading"><div className="detail-path" title={selected?.path}><FolderOpen size={15}/><span>{selected?.path}</span></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.reveal(selected.path)}>Show in folder</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
+            <Theme className="item-metadata-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
+              <DataList.Root className="item-metadata" orientation="horizontal" size="2">
+                <DataList.Item align="center"><DataList.Label minWidth="110px">Size on disk</DataList.Label><DataList.Value>{formatSize(selected?.size ?? 0)}</DataList.Value></DataList.Item>
+              </DataList.Root>
+            </Theme>
+            <Theme className="contents-table-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
+              <div className="contents-table-wrap"><Table.Root className="contents-table" variant="ghost" layout="fixed" size="2">
+                <Table.Header><Table.Row><Table.ColumnHeaderCell>Contents</Table.ColumnHeaderCell><Table.ColumnHeaderCell width="92px" justify="end">Size</Table.ColumnHeaderCell><Table.ColumnHeaderCell width="52px"><span className="sr-only">Actions</span></Table.ColumnHeaderCell></Table.Row></Table.Header>
+                <Table.Body>{selected?.children?.slice(0, 60).map((child) => <Table.Row className="contents-row" key={child.path + child.name}>
+                  <Table.RowHeaderCell><button className="contents-item" onClick={() => inspectNode(child)}><span className={`file-icon ${child.kind}`}>{child.kind === 'folder' ? '◼' : '●'}</span><span className="file-info"><b>{child.name}</b><small>{child.kind}</small></span></button></Table.RowHeaderCell>
+                  <Table.Cell className="file-size" justify="end">{formatSize(child.size)}</Table.Cell>
+                  <Table.Cell><div className="contents-actions"><button className="contents-open" aria-label={`Inspect ${child.name}`} onClick={() => inspectNode(child)}><ChevronRight size={15}/></button>{(child.kind === 'file' || child.kind === 'folder') && <button className="row-delete" disabled={deleting === child.path} aria-label={`Move ${child.name} to Trash`} title="Move to Trash" onClick={() => void trashNode(child)}><Trash2 size={14}/></button>}</div></Table.Cell>
+                </Table.Row>)}</Table.Body>
+              </Table.Root>{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
+            </Theme>
           </aside>
         </main> : <Duplicates rootPath={scan.root.path} result={duplicates} progress={duplicateProgress} analyzing={analyzingDuplicates} onAnalyze={() => void analyzeDuplicateFiles()} onCancel={() => void window.diskDaddy.cancelDuplicateAnalysis()} onResultChange={setDuplicates} onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }} formatSize={formatSize}/>}</>}
       {error && <div className="error-toast">{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
       {notice && <div className="notice-toast">{notice}<button onClick={() => setNotice('')}><X size={16}/></button></div>}
-
+      <footer className="support-footer"><span>Diskloom is free and open source.</span><a href="https://ko-fi.com/tylormayfield" target="_blank" rel="noreferrer">Support on Ko-fi ♡</a><i aria-hidden="true">·</i><a href="https://tylor.nz" target="_blank" rel="noreferrer">Tylor.nz ↗</a></footer>
     </div>
   </Tooltip.Provider>
 }
