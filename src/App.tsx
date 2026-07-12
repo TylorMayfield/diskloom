@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { ChevronRight, FolderOpen, HardDrive, MoreHorizontal, Search, X } from 'lucide-react'
+import { ChevronRight, FolderOpen, HardDrive, MoreHorizontal, Search, Trash2, X } from 'lucide-react'
 import { Sunburst } from './Sunburst'
 import type { DiskNode, ScanResult } from './types'
 
@@ -18,6 +18,7 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState({ path: '', items: 0 })
   const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => window.diskDaddy.onProgress(setProgress), [])
 
@@ -58,6 +59,36 @@ export function App() {
     if (node) { setSelected(node); setChartRoot(node) }
   }
 
+  const removeNode = (node: DiskNode, target: string): [DiskNode | null, number] => {
+    if (node.path === target) return [null, node.size]
+    if (!node.children) return [node, 0]
+    let removed = 0
+    const children: DiskNode[] = []
+    for (const child of node.children) {
+      const [next, childRemoved] = removeNode(child, target)
+      removed += childRemoved
+      if (next) children.push(next)
+    }
+    return removed ? [{ ...node, size: Math.max(0, node.size - removed), children }, removed] : [node, 0]
+  }
+
+  const trashNode = async (node: DiskNode) => {
+    if (!scan || !window.confirm(`Move “${node.name}” to the Trash?\n\n${node.path}`)) return
+    try {
+      setDeleting(node.path); setError('')
+      await window.diskDaddy.trash(node.path)
+      const [nextRoot] = removeNode(scan.root, node.path)
+      if (!nextRoot) return
+      const selectedPath = selected?.path
+      const chartRootPath = chartRoot?.path
+      setScan({ ...scan, root: nextRoot })
+      setSelected((selectedPath && findNode(nextRoot, selectedPath)) || findNode(nextRoot, node.path.slice(0, node.path.lastIndexOf('/'))) || nextRoot)
+      setChartRoot((chartRootPath && findNode(nextRoot, chartRootPath)) || nextRoot)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `Could not move ${node.name} to the Trash.`)
+    } finally { setDeleting(null) }
+  }
+
   return <Tooltip.Provider delayDuration={300}>
     <div className="app-shell">
       <header className="titlebar">
@@ -78,7 +109,7 @@ export function App() {
           <aside className="details-panel">
             <div className="details-heading"><div><p className="eyebrow">SELECTED ITEM</p><h2>{selected?.name}</h2></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.reveal(selected.path)}>Show in folder</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
             <p className="detail-path">{selected?.path}</p><div className="size-card"><span>Size on disk</span><strong>{formatSize(selected?.size ?? 0)}</strong><small>{chartRoot?.size ? ((selected?.size ?? 0) / chartRoot.size * 100).toFixed(1) : 0}% of current view</small></div>
-            <div className="list-heading"><span>Contents</span><span>Size</span></div><div className="file-list">{selected?.children?.slice(0, 60).map((child) => <button className="file-row" key={child.path + child.name} onClick={() => inspectNode(child)}><span className={`file-icon ${child.kind}`}>{child.kind === 'folder' ? '◼' : '●'}</span><span className="file-info"><b>{child.name}</b><small>{child.kind}</small></span><span className="file-size">{formatSize(child.size)}</span><ChevronRight size={15}/></button>)}{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
+            <div className="list-heading"><span>Contents</span><span>Size</span></div><div className="file-list">{selected?.children?.slice(0, 60).map((child) => <div className="file-row" key={child.path + child.name}><button className="file-row-main" onClick={() => inspectNode(child)}><span className={`file-icon ${child.kind}`}>{child.kind === 'folder' ? '◼' : '●'}</span><span className="file-info"><b>{child.name}</b><small>{child.kind}</small></span><span className="file-size">{formatSize(child.size)}</span><ChevronRight size={15}/></button>{(child.kind === 'file' || child.kind === 'folder') && <button className="row-delete" disabled={deleting === child.path} aria-label={`Move ${child.name} to Trash`} title="Move to Trash" onClick={() => void trashNode(child)}><Trash2 size={14}/></button>}</div>)}{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
           </aside>
         </main>}
       {error && <div className="error-toast">{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
