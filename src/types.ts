@@ -32,10 +32,12 @@ export type DuplicateCleanupGroup = { groupId: string; retained: DuplicateFile; 
 export type DuplicateCleanupRequest = { groups: DuplicateCleanupGroup[] }
 export type DuplicateCleanupOutcome = { path: string; status: 'trashed' | 'skipped' | 'failed'; reason?: string }
 export type DuplicateCleanupResult = { outcomes: DuplicateCleanupOutcome[] }
+export type BenchmarkProgress = { completed: number; total: number; current: string }
+export type BenchmarkResult = { id: string; label: string; detail: string; read: number; write: number; readVariation: number; writeVariation: number; readIops?: number; writeIops?: number }
+export type BenchmarkReport = { target: string; sizeMiB: number; runs: number; totalMemoryBytes: number; completedAt: string; results: BenchmarkResult[] }
+export type BenchmarkDrive = { id: string; name: string; mountPoint: string; totalBytes: number; freeBytes: number; readOnly: boolean }
 
-declare global {
-  interface Window {
-    diskDaddy: {
+export type DiskloomApi = {
       pickFolder(): Promise<string | null>
       scan(path: string): Promise<ScanResult>
       reveal(path: string): Promise<void>
@@ -46,6 +48,17 @@ declare global {
       trashDuplicates(request: DuplicateCleanupRequest): Promise<DuplicateCleanupResult>
       onProgress(listener: (progress: { path: string; items: number }) => void): () => void
       onDuplicateProgress(listener: (progress: DuplicateProgress) => void): () => void
-    }
+      runBenchmark(request: { target: string; sizeMiB: number; runs: number }): Promise<BenchmarkReport>
+      listBenchmarkDrives(): Promise<BenchmarkDrive[]>
+      getSystemMemory(): Promise<number>
+      cancelBenchmark(): Promise<void>
+      onBenchmarkProgress(listener: (progress: BenchmarkProgress) => void): () => void
+}
+
+declare global {
+  interface Window {
+    diskloom: DiskloomApi
+    /** Temporary migration alias for renderer hot reloads using the pre-Diskloom bridge. */
+    diskDaddy?: DiskloomApi
   }
 }

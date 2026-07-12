@@ -4,6 +4,7 @@ import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { scanPath } from './scanner.js'
 import { analyzeDuplicates, fileMatches } from './duplicates.js'
+import { listBenchmarkDrives, runBenchmark } from './benchmark.js'
 import type { DuplicateCleanupRequest, DuplicateCleanupResult } from './types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -79,3 +80,15 @@ ipcMain.handle('trash-duplicates', async (_event, request: DuplicateCleanupReque
   }
   return { outcomes }
 })
+
+let benchmarkController: AbortController | null = null
+ipcMain.handle('list-benchmark-drives', () => listBenchmarkDrives())
+ipcMain.handle('get-system-memory', () => os.totalmem())
+ipcMain.handle('run-benchmark', async (event, request: { target: string; sizeMiB: number; runs: number }) => {
+  benchmarkController?.abort()
+  const controller = new AbortController()
+  benchmarkController = controller
+  try { return await runBenchmark(request, controller.signal, (value) => event.sender.send('benchmark-progress', value)) }
+  finally { if (benchmarkController === controller) benchmarkController = null }
+})
+ipcMain.handle('cancel-benchmark', () => { benchmarkController?.abort() })

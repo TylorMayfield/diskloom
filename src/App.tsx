@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { DataList, Table, Theme } from '@radix-ui/themes'
-import { ChevronRight, FolderOpen, HardDrive, MoreHorizontal, Search, Trash2, X } from 'lucide-react'
+import { ChevronRight, FolderOpen, Gauge, HardDrive, MoreHorizontal, Search, Trash2, X } from 'lucide-react'
 import { Sunburst } from './Sunburst'
 import { Duplicates } from './Duplicates'
+import { Benchmark } from './Benchmark'
 import type { DiskNode, DuplicateAnalysisResult, DuplicateProgress, ScanResult } from './types'
 
 const formatSize = (bytes: number) => {
@@ -21,21 +22,21 @@ export function App() {
   const [progress, setProgress] = useState({ path: '', items: 0 })
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [view, setView] = useState<'map' | 'duplicates'>('map')
+  const [view, setView] = useState<'map' | 'duplicates' | 'benchmark'>('map')
   const [duplicates, setDuplicates] = useState<DuplicateAnalysisResult | null>(null)
   const [duplicateProgress, setDuplicateProgress] = useState<DuplicateProgress | null>(null)
   const [analyzingDuplicates, setAnalyzingDuplicates] = useState(false)
   const [notice, setNotice] = useState('')
 
-  useEffect(() => window.diskDaddy.onProgress(setProgress), [])
-  useEffect(() => window.diskDaddy.onDuplicateProgress(setDuplicateProgress), [])
+  useEffect(() => window.diskloom.onProgress(setProgress), [])
+  useEffect(() => window.diskloom.onDuplicateProgress(setDuplicateProgress), [])
 
   const runScan = async (target?: string) => {
     try {
-      const path = target ?? await window.diskDaddy.pickFolder()
+      const path = target ?? await window.diskloom.pickFolder()
       if (!path) return
       setBusy(true); setError(''); setProgress({ path, items: 0 })
-      const result = await window.diskDaddy.scan(path)
+      const result = await window.diskloom.scan(path)
       setScan(result); setSelected(result.root); setChartRoot(result.root)
       setDuplicates(null); setView('map'); setNotice('')
     } catch (cause) {
@@ -85,7 +86,7 @@ export function App() {
     if (!scan || !window.confirm(`Move “${node.name}” to the Trash?\n\n${node.path}`)) return
     try {
       setDeleting(node.path); setError('')
-      await window.diskDaddy.trash(node.path)
+      await window.diskloom.trash(node.path)
       const [nextRoot] = removeNode(scan.root, node.path)
       if (!nextRoot) return
       const selectedPath = selected?.path
@@ -102,7 +103,7 @@ export function App() {
     if (!scan) return
     try {
       setAnalyzingDuplicates(true); setDuplicateProgress(null); setError(''); setNotice('')
-      setDuplicates(await window.diskDaddy.analyzeDuplicates(scan.root.path))
+      setDuplicates(await window.diskloom.analyzeDuplicates(scan.root.path))
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Duplicate analysis failed.'
       if (!message.toLowerCase().includes('cancel')) setError(message)
@@ -114,20 +115,22 @@ export function App() {
       <header className="titlebar">
         <nav className="breadcrumbs">{crumbs.map((crumb, i) => <span key={crumb.path} className="crumb-wrap">{i > 0 && <ChevronRight size={14}/>}<button onClick={() => navigateTo(crumb.path)}>{crumb.name}</button></span>)}</nav>
         <div className="header-actions">
+          <button className="header-benchmark-btn" onClick={() => setView('benchmark')}><Gauge size={16}/> Benchmark</button>
           <button className="primary-btn" onClick={() => void runScan()}><Search size={16}/> Scan folder</button>
         </div>
       </header>
 
-      {busy ? <main className="loading-state"><div className="scanner-orbit"><HardDrive size={38}/></div><h1>Mapping your disk</h1><p>{progress.items.toLocaleString()} items inspected</p><div className="progress-path">{progress.path}</div></main>
+      {view === 'benchmark' && !scan ? <><div className="result-tabs"><button onClick={() => setView('map')}>Disk Map</button><button disabled>Duplicates</button><button className="active">Benchmark</button></div><Benchmark onError={setError}/></>
+      : busy ? <main className="loading-state"><div className="scanner-orbit"><HardDrive size={38}/></div><h1>Mapping your disk</h1><p>{progress.items.toLocaleString()} items inspected</p><div className="progress-path">{progress.path}</div></main>
       : !scan ? <main className="welcome">
           <div className="welcome-art"><div className="orb orb-a"/><div className="orb orb-b"/><div className="orb orb-c"/><HardDrive size={58}/></div>
           <h1>Find what’s filling<br/>your disk.</h1><p className="welcome-copy">A fast, private map of every folder. Nothing leaves your computer.</p>
           <button className="hero-btn" onClick={() => void runScan()}><FolderOpen size={20}/> Choose a folder to scan</button>
         </main>
-      : <><div className="result-tabs"><button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Disk Map</button><button className={view === 'duplicates' ? 'active' : ''} onClick={() => setView('duplicates')}>Duplicates{duplicates?.groups.length ? <span>{duplicates.groups.length}</span> : null}</button></div>{view === 'map' ? <main className="workspace">
+      : <><div className="result-tabs"><button className={view === 'map' ? 'active' : ''} onClick={() => setView('map')}>Disk Map</button><button className={view === 'duplicates' ? 'active' : ''} onClick={() => setView('duplicates')}>Duplicates{duplicates?.groups.length ? <span>{duplicates.groups.length}</span> : null}</button><button className={view === 'benchmark' ? 'active' : ''} onClick={() => setView('benchmark')}>Benchmark</button></div>{view === 'map' ? <main className="workspace">
           <section className="visual-panel"><Sunburst root={chartRoot ?? scan.root} selected={selected ?? scan.root} onSelect={inspectNode} formatSize={formatSize}/><div className="legend"><span><i className="dot folder-dot"/>Folders</span><span><i className="dot file-dot"/>Files</span><span>{scan.itemCount.toLocaleString()} items · {(scan.durationMs / 1000).toFixed(1)}s</span></div></section>
           <aside className="details-panel">
-            <div className="details-heading"><div className="detail-path" title={selected?.path}><FolderOpen size={15}/><span>{selected?.path}</span></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskDaddy.reveal(selected.path)}>Show in folder</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
+            <div className="details-heading"><div className="detail-path" title={selected?.path}><FolderOpen size={15}/><span>{selected?.path}</span></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskloom.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskloom.reveal(selected.path)}>Show in folder</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
             <Theme className="item-metadata-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
               <DataList.Root className="item-metadata" orientation="horizontal" size="2">
                 <DataList.Item align="center"><DataList.Label minWidth="110px">Size on disk</DataList.Label><DataList.Value>{formatSize(selected?.size ?? 0)}</DataList.Value></DataList.Item>
@@ -144,7 +147,7 @@ export function App() {
               </Table.Root>{!selected?.children?.length && <div className="empty-list">No mapped contents</div>}</div>
             </Theme>
           </aside>
-        </main> : <Duplicates rootPath={scan.root.path} result={duplicates} progress={duplicateProgress} analyzing={analyzingDuplicates} onAnalyze={() => void analyzeDuplicateFiles()} onCancel={() => void window.diskDaddy.cancelDuplicateAnalysis()} onResultChange={setDuplicates} onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }} formatSize={formatSize}/>}</>}
+        </main> : view === 'duplicates' ? <Duplicates rootPath={scan.root.path} result={duplicates} progress={duplicateProgress} analyzing={analyzingDuplicates} onAnalyze={() => void analyzeDuplicateFiles()} onCancel={() => void window.diskloom.cancelDuplicateAnalysis()} onResultChange={setDuplicates} onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }} formatSize={formatSize}/> : <Benchmark target={scan.root.path} onError={setError}/>}</>}
       {error && <div className="error-toast">{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
       {notice && <div className="notice-toast">{notice}<button onClick={() => setNotice('')}><X size={16}/></button></div>}
       <footer className="support-footer"><span>Diskloom is free and open source.</span><a href="https://ko-fi.com/tylormayfield" target="_blank" rel="noreferrer">Support on Ko-fi ♡</a><i aria-hidden="true">·</i><a href="https://tylor.nz" target="_blank" rel="noreferrer">Tylor.nz ↗</a></footer>

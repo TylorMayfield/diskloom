@@ -72,7 +72,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
         retained: group.files.find((file) => file.path === retained[group.id])!,
         selected: group.files.filter((file) => selected.has(file.path)),
       })).filter((group) => group.selected.length && group.retained)
-      const cleanup = await window.diskDaddy.trashDuplicates({ groups })
+      const cleanup = await window.diskloom.trashDuplicates({ groups })
       const trashed = new Set(cleanup.outcomes.filter((item) => item.status === 'trashed').map((item) => item.path))
       const unsuccessful = cleanup.outcomes.filter((item) => item.status !== 'trashed')
       const nextGroups = result.groups.map((group) => {
@@ -124,7 +124,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
           <Table.Cell className="duplicate-date">{dateText(file.modifiedAt)}</Table.Cell>
           <Table.Cell justify="end" className="duplicate-size">{formatSize(file.size)}</Table.Cell>
           <Table.Cell><button className="keep-btn" onClick={() => chooseRetained(group, file.path)}>{file.path === keep ? 'Keeping' : 'Keep this'}</button></Table.Cell>
-          <Table.Cell><div className="duplicate-actions"><button className="mini-btn" aria-label={`Open ${file.name}`} title="Open file" onClick={() => void window.diskDaddy.openPath(file.path)}><ExternalLink size={15}/></button><button className="mini-btn" aria-label={`Show ${file.name} in folder`} title="Show in folder" onClick={() => void window.diskDaddy.reveal(file.path)}><FolderOpen size={15}/></button></div></Table.Cell>
+          <Table.Cell><div className="duplicate-actions"><button className="mini-btn" aria-label={`Open ${file.name}`} title="Open file" onClick={() => void window.diskloom.openPath(file.path)}><ExternalLink size={15}/></button><button className="mini-btn" aria-label={`Show ${file.name} in folder`} title="Show in folder" onClick={() => void window.diskloom.reveal(file.path)}><FolderOpen size={15}/></button></div></Table.Cell>
         </Table.Row>)}</Fragment>
       })}</Table.Body>
     </Table.Root></div></Theme>
