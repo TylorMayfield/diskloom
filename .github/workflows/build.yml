@@ -18,20 +18,22 @@ jobs:
         include:
           - name: macOS Apple Silicon
             os: macos-14
-            command: pnpm exec electron-builder --mac --arm64 --publish never
+            isMac: true
+            command: pnpm exec electron-builder --mac --arm64 --publish never -c.forceCodeSigning=true
           - name: macOS Intel
             os: macos-15-intel
-            command: pnpm exec electron-builder --mac --x64 --publish never
+            isMac: true
+            command: pnpm exec electron-builder --mac --x64 --publish never -c.forceCodeSigning=true
           - name: Windows
             os: windows-latest
+            isMac: false
             command: pnpm exec electron-builder --win --x64 --publish never
           - name: Linux
             os: ubuntu-latest
+            isMac: false
             command: pnpm exec electron-builder --linux --x64 --publish never
 
     runs-on: ${{ matrix.os }}
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -44,7 +46,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm exec vite build
-      - run: ${{ matrix.command }}
+      - name: Build, sign, and notarize
+        run: ${{ matrix.command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.isMac && 'true' || 'false' }}
+          CSC_LINK: ${{ matrix.isMac && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.isMac && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.isMac && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.isMac && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.isMac && secrets.APPLE_TEAM_ID || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: Diskloom-${{ matrix.name }}

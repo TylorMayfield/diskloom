@@ -1,6 +1,6 @@
 {
   "name": "diskloom",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "author": {
     "name": "Tylor Mayfield",
     "email": "TylorMayfield@users.noreply.github.com"
@@ -51,7 +51,9 @@
         "zip"
       ],
       "icon": "build/icon.png",
-      "artifactName": "Diskloom-mac-${arch}.${ext}"
+      "artifactName": "Diskloom-mac-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "notarize": true
     },
     "win": {
       "target": [
