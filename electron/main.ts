@@ -3,6 +3,8 @@ import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { scanPath } from './scanner.js'
+import { analyzeDuplicates, fileMatches } from './duplicates.js'
+import type { DuplicateCleanupRequest, DuplicateCleanupResult } from './types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -44,3 +46,32 @@ ipcMain.handle('scan', async (event, target: string) => {
 ipcMain.handle('reveal', (_event, target: string) => shell.showItemInFolder(target))
 ipcMain.handle('open-path', (_event, target: string) => shell.openPath(target))
 ipcMain.handle('trash', async (_event, target: string) => shell.trashItem(target))
+
+let duplicateController: AbortController | null = null
+ipcMain.handle('analyze-duplicates', async (event, target: string) => {
+  duplicateController?.abort()
+  const controller = new AbortController()
+  duplicateController = controller
+  try { return await analyzeDuplicates(target, controller.signal, (value) => event.sender.send('duplicate-progress', value)) }
+  finally { if (duplicateController === controller) duplicateController = null }
+})
+ipcMain.handle('cancel-duplicate-analysis', () => { duplicateController?.abort() })
+ipcMain.handle('trash-duplicates', async (_event, request: DuplicateCleanupRequest): Promise<DuplicateCleanupResult> => {
+  const outcomes: DuplicateCleanupResult['outcomes'] = []
+  for (const group of request.groups) {
+    if (!group.retained || group.selected.some((file) => file.path === group.retained.path)) {
+      outcomes.push(...group.selected.map((file) => ({ path: file.path, status: 'skipped' as const, reason: 'No protected copy was retained.' })))
+      continue
+    }
+    if (!await fileMatches(group.retained)) {
+      outcomes.push(...group.selected.map((file) => ({ path: file.path, status: 'skipped' as const, reason: 'The retained copy changed or is missing.' })))
+      continue
+    }
+    for (const file of group.selected) {
+      if (!await fileMatches(file)) { outcomes.push({ path: file.path, status: 'skipped', reason: 'File changed or is missing.' }); continue }
+      try { await shell.trashItem(file.path); outcomes.push({ path: file.path, status: 'trashed' }) }
+      catch (error) { outcomes.push({ path: file.path, status: 'failed', reason: error instanceof Error ? error.message : 'Could not move file to Trash.' }) }
+    }
+  }
+  return { outcomes }
+})

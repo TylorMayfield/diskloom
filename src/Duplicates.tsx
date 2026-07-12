@@ -1,0 +1,112 @@
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Copy, ExternalLink, FolderOpen, LoaderCircle, Search, Trash2 } from 'lucide-react'
+import type { DuplicateAnalysisResult, DuplicateFile, DuplicateGroup, DuplicateProgress } from './types'
+
+type Props = {
+  rootPath: string
+  result: DuplicateAnalysisResult | null
+  progress: DuplicateProgress | null
+  analyzing: boolean
+  onAnalyze(): void
+  onCancel(): void
+  onResultChange(result: DuplicateAnalysisResult): void
+  onMessage(message: string, error?: boolean): void
+  formatSize(bytes: number): string
+}
+
+const oldestCopy = (files: DuplicateFile[]) => [...files].sort((a, b) => {
+  const date = new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
+  return date || a.path.length - b.path.length || a.path.localeCompare(b.path)
+})[0]
+
+const dateText = (value?: string) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Unavailable'
+
+export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, onCancel, onResultChange, onMessage, formatSize }: Props) {
+  const [retained, setRetained] = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [cleaning, setCleaning] = useState(false)
+  useEffect(() => {
+    if (!analyzing) return
+    setRetained({}); setSelected(new Set()); setExpanded(new Set())
+  }, [analyzing])
+
+  useEffect(() => {
+    if (!result) return
+    setRetained((current) => {
+      const next = { ...current }
+      result.groups.forEach((group) => { if (!next[group.id]) next[group.id] = oldestCopy(group.files).path })
+      return next
+    })
+    setSelected((current) => {
+      const next = new Set(current)
+      result.groups.forEach((group) => {
+        const keep = retained[group.id] ?? oldestCopy(group.files).path
+        if (!retained[group.id]) group.files.forEach((file) => { if (file.path !== keep) next.add(file.path) })
+      })
+      return next
+    })
+    setExpanded((current) => new Set([...current, ...result.groups.map((group) => group.id)]))
+  }, [result])
+
+  const selectedFiles = result?.groups.flatMap((group) => group.files.filter((file) => selected.has(file.path))) ?? []
+  const reclaimable = selectedFiles.reduce((sum, file) => sum + file.size, 0)
+
+  const chooseRetained = (group: DuplicateGroup, path: string) => {
+    setRetained((current) => ({ ...current, [group.id]: path }))
+    setSelected((current) => {
+      const next = new Set(current)
+      group.files.forEach((file) => file.path === path ? next.delete(file.path) : next.add(file.path))
+      return next
+    })
+  }
+
+  const clean = async () => {
+    if (!result || !selectedFiles.length) return
+    if (!window.confirm(`Move ${selectedFiles.length.toLocaleString()} selected duplicate${selectedFiles.length === 1 ? '' : 's'} to the Trash?\n\nThis can reclaim ${formatSize(reclaimable)}. At least one copy from every group will be retained.`)) return
+    setCleaning(true)
+    try {
+      const groups = result.groups.map((group) => ({
+        groupId: group.id,
+        retained: group.files.find((file) => file.path === retained[group.id])!,
+        selected: group.files.filter((file) => selected.has(file.path)),
+      })).filter((group) => group.selected.length && group.retained)
+      const cleanup = await window.diskDaddy.trashDuplicates({ groups })
+      const trashed = new Set(cleanup.outcomes.filter((item) => item.status === 'trashed').map((item) => item.path))
+      const unsuccessful = cleanup.outcomes.filter((item) => item.status !== 'trashed')
+      const nextGroups = result.groups.map((group) => {
+        const files = group.files.filter((file) => !trashed.has(file.path))
+        return { ...group, files, wastedSpace: group.size * Math.max(0, files.length - 1) }
+      }).filter((group) => group.files.length > 1)
+      const next = {
+        ...result, groups: nextGroups,
+        totalWastedSpace: nextGroups.reduce((sum, group) => sum + group.wastedSpace, 0),
+        duplicateFileCount: nextGroups.reduce((sum, group) => sum + group.files.length - 1, 0),
+      }
+      setSelected((current) => new Set([...current].filter((path) => !trashed.has(path))))
+      onResultChange(next)
+      onMessage(`${trashed.size.toLocaleString()} file${trashed.size === 1 ? '' : 's'} moved to Trash${unsuccessful.length ? `; ${unsuccessful.length} skipped or failed` : ''}.`, unsuccessful.length > 0)
+    } catch (cause) { onMessage(cause instanceof Error ? cause.message : 'Duplicate cleanup failed.', true) }
+    finally { setCleaning(false) }
+  }
+
+  if (analyzing) return <section className="duplicates-state">
+    <LoaderCircle className="spin" size={42}/><h2>{progress?.phase === 'hashing' ? 'Comparing file contents' : 'Finding candidates'}</h2>
+    <p>{(progress?.filesProcessed ?? 0).toLocaleString()} files processed{progress?.totalFiles ? ` of ${progress.totalFiles.toLocaleString()}` : ''}</p>
+    {progress?.phase === 'hashing' && <div className="duplicate-progress"><i style={{ width: `${Math.min(100, (progress.bytesHashed / Math.max(1, progress.totalBytes ?? 1)) * 100)}%` }}/></div>}
+    <small className="progress-path">{progress?.currentPath || rootPath}</small><button className="secondary-btn" onClick={onCancel}>Cancel analysis</button>
+  </section>
+
+  if (!result) return <section className="duplicates-state"><div className="duplicate-hero"><Copy size={48}/></div><h2>Find duplicate files</h2><p>Diskloom groups files by size, then privately compares only likely matches. File contents never leave this computer.</p><button className="hero-btn" onClick={onAnalyze}><Search size={18}/> Analyze duplicates</button></section>
+  if (!result.groups.length) return <section className="duplicates-state"><div className="duplicate-hero"><Copy size={48}/></div><h2>No duplicates found</h2><p>{result.scannedFileCount.toLocaleString()} files inspected and {result.hashedFileCount.toLocaleString()} candidates compared.</p><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></section>
+
+  return <section className="duplicates-results">
+    <div className="duplicates-summary"><div><p className="eyebrow">RECLAIMABLE SPACE</p><strong>{formatSize(result.totalWastedSpace)}</strong></div><div><b>{result.groups.length.toLocaleString()}</b><span>duplicate groups</span></div><div><b>{result.duplicateFileCount.toLocaleString()}</b><span>extra copies</span></div><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></div>
+    <div className="duplicate-groups">{result.groups.map((group) => {
+      const open = expanded.has(group.id), keep = retained[group.id]
+      return <article className="duplicate-card" key={group.id}><button className="duplicate-card-head" onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(group.id) : next.add(group.id); return next })}>{open ? <ChevronDown/> : <ChevronRight/>}<div><b>{group.files.every((file) => file.name === group.files[0].name) ? group.files[0].name : 'Matching files'}</b><span>{group.files.length} copies · {formatSize(group.size)} each</span></div><strong>{formatSize(group.wastedSpace)} wasted</strong></button>
+      {open && <div className="duplicate-files">{group.files.map((file) => <div className={`duplicate-file ${file.path === keep ? 'kept' : ''}`} key={file.path}><input type="checkbox" checked={selected.has(file.path)} disabled={file.path === keep} aria-label={`Select ${file.name} for Trash`} onChange={(event) => setSelected((current) => { const next = new Set(current); event.target.checked ? next.add(file.path) : next.delete(file.path); return next })}/><div className="duplicate-file-info"><b>{file.name}</b><span>{file.parentPath}</span><small>Modified {dateText(file.modifiedAt)} · Created {dateText(file.createdAt)}</small></div><button className="keep-btn" onClick={() => chooseRetained(group, file.path)}>{file.path === keep ? 'Keeping' : 'Keep this'}</button><button className="mini-btn" title="Open file" onClick={() => void window.diskDaddy.openPath(file.path)}><ExternalLink size={15}/></button><button className="mini-btn" title="Show in folder" onClick={() => void window.diskDaddy.reveal(file.path)}><FolderOpen size={15}/></button></div>)}</div>}
+      </article>})}</div>
+    <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => void clean()}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
+  </section>
+}

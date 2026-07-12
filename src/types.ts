@@ -16,6 +16,23 @@ export type ScanResult = {
   inaccessibleCount: number
 }
 
+export type DuplicateFile = {
+  name: string
+  path: string
+  parentPath: string
+  size: number
+  modifiedAt: string
+  createdAt?: string
+  fingerprint: string
+}
+export type DuplicateGroup = { id: string; size: number; hash: string; wastedSpace: number; files: DuplicateFile[] }
+export type DuplicateAnalysisResult = { groups: DuplicateGroup[]; totalWastedSpace: number; duplicateFileCount: number; scannedFileCount: number; hashedFileCount: number }
+export type DuplicateProgress = { phase: 'discovering' | 'hashing'; currentPath: string; filesProcessed: number; totalFiles?: number; bytesHashed: number; totalBytes?: number }
+export type DuplicateCleanupGroup = { groupId: string; retained: DuplicateFile; selected: DuplicateFile[] }
+export type DuplicateCleanupRequest = { groups: DuplicateCleanupGroup[] }
+export type DuplicateCleanupOutcome = { path: string; status: 'trashed' | 'skipped' | 'failed'; reason?: string }
+export type DuplicateCleanupResult = { outcomes: DuplicateCleanupOutcome[] }
+
 declare global {
   interface Window {
     diskDaddy: {
@@ -24,7 +41,11 @@ declare global {
       reveal(path: string): Promise<void>
       openPath(path: string): Promise<void>
       trash(path: string): Promise<void>
+      analyzeDuplicates(path: string): Promise<DuplicateAnalysisResult>
+      cancelDuplicateAnalysis(): Promise<void>
+      trashDuplicates(request: DuplicateCleanupRequest): Promise<DuplicateCleanupResult>
       onProgress(listener: (progress: { path: string; items: number }) => void): () => void
+      onDuplicateProgress(listener: (progress: DuplicateProgress) => void): () => void
     }
   }
 }
