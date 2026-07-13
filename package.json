@@ -2,9 +2,10 @@
   "name": "diskloom",
   "version": "2.0.7",
   "author": {
-    "name": "Tylor Mayfield",
-    "email": "TylorMayfield@users.noreply.github.com"
+    "name": "BarkOnTrack LLC",
+    "email": "tylorjmayfield@gmail.com"
   },
+  "license": "MIT",
   "private": true,
   "description": "A beautiful, local-first disk space explorer",
   "main": "dist-electron/main.js",
@@ -40,6 +41,7 @@
   "build": {
     "appId": "com.diskloom.app",
     "productName": "Diskloom",
+    "copyright": "Copyright © 2026 BarkOnTrack LLC",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",

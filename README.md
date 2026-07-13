@@ -53,3 +53,14 @@ pnpm build
 ## Support
 
 [Support this free and open-source project on Ko-fi](https://ko-fi.com/tylormayfield).
+
+## Privacy and legal
+
+Diskloom processes filesystem information locally. Optional Google Analytics telemetry is disabled until you explicitly allow it and never includes paths, filenames, file contents, hashes, drive names, or benchmark results.
+
+- [Privacy Policy and Terms of Service](https://www.tylor.nz/legal)
+- Questions, privacy requests, and source inquiries: [tylorjmayfield@gmail.com](mailto:tylorjmayfield@gmail.com)
+
+## License
+
+Copyright © 2026 BarkOnTrack LLC. Diskloom is available under the [MIT License](LICENSE), which permits use, modification, and redistribution with the required copyright and license notice.
