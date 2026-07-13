@@ -48,7 +48,9 @@ function initializeAnalytics() {
   if (!measurementId || !analyticsEnabled || !appInfo || initialized) return
 
   window.dataLayer = window.dataLayer ?? []
-  window.gtag = (...args: unknown[]) => { window.dataLayer!.push(args) }
+  // Google Tag's bootstrap API expects the function's Arguments object. A
+  // regular array looks equivalent, but gtag.js does not process it.
+  window.gtag = function () { window.dataLayer!.push(arguments) }
   window.gtag('consent', 'default', { analytics_storage: 'granted' })
   const script = document.createElement('script')
   script.async = true

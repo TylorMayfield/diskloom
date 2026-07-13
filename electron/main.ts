@@ -1,13 +1,35 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import path from 'node:path'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { scanPath } from './scanner.js'
 import { analyzeDuplicates, fileMatches } from './duplicates.js'
 import { listBenchmarkDrives, runBenchmark } from './benchmark.js'
 import type { DuplicateCleanupRequest, DuplicateCleanupResult } from './types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const rendererHost = 'app.diskloom.local'
+const rendererOrigin = `https://${rendererHost}`
+
+function registerRendererProtocol() {
+  const rendererRoot = path.resolve(__dirname, '../dist')
+  protocol.handle('https', (request) => {
+    const url = new URL(request.url)
+    if (url.hostname !== rendererHost) {
+      return net.fetch(request, { bypassCustomProtocolHandlers: true })
+    }
+
+    let pathname: string
+    try { pathname = decodeURIComponent(url.pathname) }
+    catch { return new Response('Bad request', { status: 400 }) }
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
+    const filePath = path.resolve(rendererRoot, relativePath)
+    if (filePath !== rendererRoot && !filePath.startsWith(`${rendererRoot}${path.sep}`)) {
+      return new Response('Not found', { status: 404 })
+    }
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -29,10 +51,11 @@ function createWindow() {
     return { action: 'deny' }
   })
   if (process.env.VITE_DEV_SERVER_URL) void win.loadURL(process.env.VITE_DEV_SERVER_URL)
-  else void win.loadFile(path.join(__dirname, '../dist/index.html'))
+  else void win.loadURL(rendererOrigin)
 }
 
 app.whenReady().then(() => {
+  if (!process.env.VITE_DEV_SERVER_URL) registerRendererProtocol()
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
