@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import type { DiskNode } from './types'
 
 const COLORS = ['#ffcc66', '#ff8266', '#ff5d9e', '#bd75ff', '#6f8cff', '#42c6d9', '#4fd19c', '#a5d65c']
@@ -39,10 +40,35 @@ function buildSegments(root: DiskNode): Segment[] {
   return result
 }
 
-export function Sunburst({ root, selected, onSelect, formatSize }: { root: DiskNode; selected: DiskNode; onSelect(node: DiskNode): void; formatSize(n: number): string }) {
+type ChartMenu = { node: DiskNode; x: number; y: number }
+
+export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize }: { root: DiskNode; selected: DiskNode; onSelect(node: DiskNode): void; onRequestTrash(node: DiskNode): void; formatSize(n: number): string }) {
   const segments = useMemo(() => buildSegments(root), [root])
   const [hovered, setHovered] = useState<DiskNode | null>(null)
+  const [menu, setMenu] = useState<ChartMenu | null>(null)
   const focus = hovered ?? selected
+
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menu])
+
+  const openMenu = (event: ReactMouseEvent<SVGPathElement>, node: DiskNode) => {
+    event.preventDefault(); event.stopPropagation()
+    if (node.kind !== 'file' && node.kind !== 'folder') return
+    const bounds = event.currentTarget.ownerSVGElement!.getBoundingClientRect()
+    const x = Math.min(Math.max(8, event.clientX - bounds.left), Math.max(8, bounds.width - 208))
+    const y = Math.min(Math.max(8, event.clientY - bounds.top), Math.max(8, bounds.height - 92))
+    setHovered(node); setMenu({ node, x, y })
+  }
+
   return <div className="sunburst-wrap">
     <svg key={root.path} className="sunburst" viewBox="0 0 600 600" role="img" aria-label={`Disk map for ${root.name}`}>
       <defs><filter id="glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
@@ -51,12 +77,13 @@ export function Sunburst({ root, selected, onSelect, formatSize }: { root: DiskN
         return <path key={`${segment.node.path}-${segment.depth}`} d={arcPath(segment.start, segment.end, 78 + segment.depth * 54, 126 + segment.depth * 54)}
           fill={segment.color} opacity={active ? 1 : 0.72 - segment.depth * 0.045} className="segment"
           filter={active ? 'url(#glow)' : undefined} onMouseEnter={() => setHovered(segment.node)} onMouseLeave={() => setHovered(null)}
-          onClick={() => onSelect(segment.node)} />
+          onClick={() => onSelect(segment.node)} onContextMenu={(event) => openMenu(event, segment.node)} />
       })}
       <circle cx="300" cy="300" r="116" className="chart-center" onClick={() => onSelect(root)} />
       <text x="300" y="286" textAnchor="middle" className="center-size">{formatSize(focus.size)}</text>
       <text x="300" y="316" textAnchor="middle" className="center-name">{focus.name}</text>
       <text x="300" y="340" textAnchor="middle" className="center-hint">{hovered ? 'click to inspect' : 'hover to explore'}</text>
     </svg>
+    {menu && <div className="chart-context-menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}><span title={menu.node.path}>{menu.node.name}</span><button role="menuitem" onClick={() => { const node = menu.node; setMenu(null); onRequestTrash(node) }}><Trash2 size={14}/> Move to Trash</button></div>}
   </div>
 }

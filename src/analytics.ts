@@ -62,7 +62,7 @@ function initializeAnalytics() {
     app_version: appInfo.version,
     app_platform: appInfo.platform,
     app_arch: appInfo.arch,
-    electron_version: appInfo.electronVersion,
+    tauri_version: appInfo.tauriVersion,
   })
   window.gtag('config', measurementId, {
     client_id: clientId(),

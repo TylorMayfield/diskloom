@@ -2,7 +2,7 @@
 
 Diskloom is a fast, private, open-source disk space analyzer and storage visualizer for macOS, Windows, and Linux. Scan drives and folders, explore disk usage, find large files, and identify duplicate files without uploading your data.
 
-Built with Electron, TypeScript, React, and Radix UI.
+Built with Tauri, Rust, TypeScript, React, and Radix UI.
 
 ![Diskloom disk space analyzer showing an interactive storage map](docs/images/diskloom-disk-space-analyzer.png)
 
@@ -25,7 +25,7 @@ Download the latest Diskloom desktop app for your platform:
 
 - Visualize disk usage and quickly find what is taking up space.
 - Scan every accessible descendant of drives or individual folders with allocated-byte totals.
-- Page through the complete local scan index without dropping smaller items from exploration.
+- Page through the complete on-disk local scan index without dropping smaller items from exploration or retaining the whole tree in memory.
 - Find large files and duplicate files.
 - Build a persistent Reclaim List, review risky locations and changed items, then move approved items to Trash together.
 - Keep filenames, paths, file contents, and scan results private.
@@ -41,6 +41,8 @@ Diskloom privately compares likely matches, shows how much space duplicate files
 
 ## Development
 
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform, including Rust, then run:
+
 ```bash
 pnpm install
 pnpm dev
@@ -51,6 +53,8 @@ pnpm dev
 ```bash
 pnpm build
 ```
+
+The filesystem scanner, duplicate finder, reclaim safeguards, and storage benchmark run locally in the Rust backend. The React renderer communicates with it through typed Tauri commands and events.
 
 ## Support
 

@@ -3,8 +3,7 @@ name: Desktop builds
 on:
   workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -18,24 +17,37 @@ jobs:
         include:
           - name: macOS Apple Silicon
             os: macos-14
+            args: --target aarch64-apple-darwin --bundles dmg,app
+            rustTarget: aarch64-apple-darwin
+            macArch: arm64
+            isLinux: false
             isMac: true
-            command: pnpm exec electron-builder --mac --arm64 --publish never -c.forceCodeSigning=true
           - name: macOS Intel
             os: macos-15-intel
+            args: --target x86_64-apple-darwin --bundles dmg,app
+            rustTarget: x86_64-apple-darwin
+            macArch: x64
+            isLinux: false
             isMac: true
-            command: pnpm exec electron-builder --mac --x64 --publish never -c.forceCodeSigning=true
           - name: Windows
             os: windows-latest
+            args: --bundles nsis
+            rustTarget: x86_64-pc-windows-msvc
+            isLinux: false
             isMac: false
-            command: pnpm exec electron-builder --win --x64 --publish never
           - name: Linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
+            args: --bundles appimage,deb
+            rustTarget: x86_64-unknown-linux-gnu
+            isLinux: true
             isMac: false
-            command: pnpm exec electron-builder --linux --x64 --publish never
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux system dependencies
+        if: matrix.isLinux
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: pnpm/action-setup@v4
         with:
           version: 10.32.0
@@ -43,27 +55,48 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTarget }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm exec vite build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build, sign, and notarize
-        run: ${{ matrix.command }}
+        run: pnpm tauri build ${{ matrix.args }}
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.isMac && 'true' || 'false' }}
-          CSC_LINK: ${{ matrix.isMac && secrets.MAC_CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.isMac && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_CERTIFICATE: ${{ matrix.isMac && secrets.MAC_CSC_LINK || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ matrix.isMac && secrets.MAC_CSC_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ matrix.isMac && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.isMac && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_PASSWORD: ${{ matrix.isMac && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.isMac && secrets.APPLE_TEAM_ID || '' }}
+      - name: Prepare macOS release artifacts
+        if: matrix.isMac
+        shell: bash
+        run: |
+          mkdir -p release
+          cp "$(find src-tauri/target -path '*/release/bundle/dmg/*.dmg' -print -quit)" "release/Diskloom-mac-${{ matrix.macArch }}.dmg"
+          ditto -c -k --sequesterRsrc --keepParent "$(find src-tauri/target -path '*/release/bundle/macos/Diskloom.app' -print -quit)" "release/Diskloom-mac-${{ matrix.macArch }}.zip"
+      - name: Prepare Windows release artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release
+          Copy-Item (Get-ChildItem -Recurse src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1) release/Diskloom-windows-x64.exe
+          Compress-Archive -Path src-tauri/target/release/diskloom.exe -DestinationPath release/Diskloom-windows-x64.zip
+      - name: Prepare Linux release artifacts
+        if: matrix.isLinux
+        shell: bash
+        run: |
+          mkdir -p release
+          cp "$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' -print -quit)" release/Diskloom-linux-x86_64.AppImage
+          cp "$(find src-tauri/target/release/bundle/deb -name '*.deb' -print -quit)" release/Diskloom-linux-amd64.deb
       - uses: actions/upload-artifact@v4
         with:
           name: Diskloom-${{ matrix.name }}
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.exe
-            dist/*.AppImage
-            dist/*.deb
+          path: release/*
           if-no-files-found: error
 
   release:
