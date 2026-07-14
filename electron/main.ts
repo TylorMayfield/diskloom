@@ -2,10 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'elect
 import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { scanPath } from './scanner.js'
+import { getChildren, getReclaimItem, pathsOverlap, reclaimItemMatches, scanPath } from './scanner.js'
 import { analyzeDuplicates, fileMatches } from './duplicates.js'
 import { listBenchmarkDrives, runBenchmark } from './benchmark.js'
-import type { DuplicateCleanupRequest, DuplicateCleanupResult } from './types.js'
+import type { DuplicateCleanupRequest, DuplicateCleanupResult, ReclaimItem, ReclaimResult } from './types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rendererHost = 'app.diskloom.local'
@@ -77,6 +77,25 @@ ipcMain.handle('pick-folder', async () => {
 ipcMain.handle('scan', async (event, target: string) => {
   const result = await scanPath(target, (progress) => event.sender.send('scan-progress', progress))
   return result
+})
+ipcMain.handle('get-children', (_event, scanId: string, target: string, offset?: number, limit?: number) => getChildren(scanId, target, offset, limit))
+ipcMain.handle('get-reclaim-item', (_event, scanId: string, target: string) => getReclaimItem(scanId, target))
+ipcMain.handle('trash-reclaim', async (_event, requested: ReclaimItem[]): Promise<ReclaimResult> => {
+  const items = Array.isArray(requested) ? requested.filter((item) => item && typeof item.path === 'string' && typeof item.fingerprint === 'string').slice(0, 10_000) : []
+  const outcomes: ReclaimResult['outcomes'] = []
+  const approved: ReclaimItem[] = []
+  const normalized = items.map((item) => ({ item, resolved: path.resolve(item.path) }))
+  for (const { item, resolved } of normalized) {
+    const overlap = approved.some((parent) => pathsOverlap(parent.path, resolved))
+    if (overlap) { outcomes.push({ path: item.path, status: 'skipped', size: item.size, reason: 'This selection overlaps another selected item.' }); continue }
+    if (!await reclaimItemMatches(item)) { outcomes.push({ path: item.path, status: 'skipped', size: item.size, reason: 'The item changed or is missing.' }); continue }
+    approved.push(item)
+  }
+  for (const item of approved) {
+    try { await shell.trashItem(item.path); outcomes.push({ path: item.path, status: 'trashed', size: item.size }) }
+    catch (error) { outcomes.push({ path: item.path, status: 'failed', size: item.size, reason: error instanceof Error ? error.message : 'Could not move item to Trash.' }) }
+  }
+  return { outcomes, reclaimedBytes: outcomes.filter((item) => item.status === 'trashed').reduce((sum, item) => sum + item.size, 0) }
 })
 ipcMain.handle('reveal', (_event, target: string) => shell.showItemInFolder(target))
 ipcMain.handle('open-path', (_event, target: string) => shell.openPath(target))

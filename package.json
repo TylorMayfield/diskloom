@@ -15,6 +15,7 @@
     "build": "tsc -b && vite build && electron-builder",
     "build:dir": "tsc -b && vite build && electron-builder --dir",
     "typecheck": "tsc -b --pretty",
+    "test": "pnpm typecheck && node --test test/*.test.mjs",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

@@ -5,16 +5,27 @@ export type DiskNode = {
   kind: 'folder' | 'file' | 'other'
   children?: DiskNode[]
   inaccessible?: boolean
+  childCount?: number
 }
 
 export type ScanResult = {
-  id?: number
+  id: string
   root: DiskNode
   startedAt: string
   durationMs: number
   itemCount: number
   inaccessibleCount: number
+  excludedCount: number
+  unknownCount: number
+  accessibleSize: number
+  accounting: 'allocated'
+  unaccountedSize: number | null
 }
+
+export type ChildPage = { parentPath: string; children: DiskNode[]; offset: number; total: number; hasMore: boolean }
+export type ReclaimItem = { name: string; path: string; size: number; kind: 'file' | 'folder'; scannedAt: string; fingerprint: string; warning?: string }
+export type ReclaimOutcome = { path: string; status: 'trashed' | 'skipped' | 'failed'; size: number; reason?: string }
+export type ReclaimResult = { outcomes: ReclaimOutcome[]; reclaimedBytes: number }
 
 export type DuplicateFile = {
   name: string

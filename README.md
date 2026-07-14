@@ -24,12 +24,14 @@ Download the latest Diskloom desktop app for your platform:
 ## Features
 
 - Visualize disk usage and quickly find what is taking up space.
-- Scan drives or individual folders locally.
+- Scan every accessible descendant of drives or individual folders with allocated-byte totals.
+- Page through the complete local scan index without dropping smaller items from exploration.
 - Find large files and duplicate files.
+- Build a persistent Reclaim List, review risky locations and changed items, then move approved items to Trash together.
 - Keep filenames, paths, file contents, and scan results private.
 - Run on macOS, Windows, and Linux.
 
-Symlinks are not followed, inaccessible paths are skipped, and scans never upload files.
+Symlink targets are not followed, inaccessible paths and unaccounted volume space are reported, hard-linked data is counted once, and scans never upload files.
 
 ### Find duplicate files
 
