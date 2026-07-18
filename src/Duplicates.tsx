@@ -3,6 +3,7 @@ import { Table, Theme } from '@radix-ui/themes'
 import { ChevronDown, ChevronRight, Copy, ExternalLink, FolderOpen, LoaderCircle, Search, Trash2 } from 'lucide-react'
 import type { DuplicateAnalysisResult, DuplicateFile, DuplicateGroup, DuplicateProgress } from './types'
 import { FileKindIcon } from './FileKindIcon'
+import { Modal } from './Modal'
 import { track } from './analytics'
 
 type Props = {
@@ -134,6 +135,6 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
     </Table.Root></div></Theme>
     <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => setConfirmCleanup(true)}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
   </section>
-    {confirmCleanup && <div className="reclaim-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmCleanup(false) }}><section className="reclaim-result trash-confirm" role="dialog" aria-modal="true" aria-labelledby="duplicate-cleanup-title" aria-describedby="duplicate-cleanup-description"><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM CLEANUP</p><h2 id="duplicate-cleanup-title">Move {selectedFiles.length.toLocaleString()} duplicate{selectedFiles.length === 1 ? '' : 's'} to Trash?</h2><p id="duplicate-cleanup-description">This can free {formatSize(reclaimable)}. Diskloom will retain at least one copy from every duplicate group, and removed files remain recoverable until the system Trash is emptied.</p><div className="reclaim-result-actions"><button className="secondary-btn" onClick={() => setConfirmCleanup(false)}>Cancel</button><button className="danger-btn" onClick={() => void clean()}><Trash2 size={15}/> Move to Trash</button></div></section></div>}
+    {confirmCleanup && <Modal backdropClassName="reclaim-result-backdrop" className="reclaim-result trash-confirm" labelledBy="duplicate-cleanup-title" describedBy="duplicate-cleanup-description" onClose={() => setConfirmCleanup(false)}><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM CLEANUP</p><h2 id="duplicate-cleanup-title">Move {selectedFiles.length.toLocaleString()} duplicate{selectedFiles.length === 1 ? '' : 's'} to Trash?</h2><p id="duplicate-cleanup-description">This can free {formatSize(reclaimable)}. Diskloom will retain at least one copy from every duplicate group, and removed files remain recoverable until the system Trash is emptied.</p><div className="reclaim-result-actions"><button className="secondary-btn" data-autofocus onClick={() => setConfirmCleanup(false)}>Cancel</button><button className="danger-btn" onClick={() => void clean()}><Trash2 size={15}/> Move to Trash</button></div></Modal>}
   </>
 }

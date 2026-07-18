@@ -22,6 +22,7 @@ const api: DiskloomApi = {
   pickFolder: () => command('pick_folder'),
   listScanLocations: () => command('list_scan_locations'),
   scan: (path) => command<ScanResult>('scan', { path }),
+  cancelScan: () => command('cancel_scan'),
   getChildren: (scanId, path, offset, limit) => command<ChildPage>('get_children', { scanId, path, offset, limit }),
   getReclaimItem: (scanId, path) => command('get_reclaim_item', { scanId, path }),
   trashReclaim: (items) => command<ReclaimResult>('trash_reclaim', { items }),

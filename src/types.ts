@@ -55,6 +55,7 @@ export type DiskloomApi = {
       pickFolder(): Promise<string | null>
       listScanLocations(): Promise<ScanLocation[]>
       scan(path: string): Promise<ScanResult>
+      cancelScan(): Promise<void>
       getChildren(scanId: string, path: string, offset?: number, limit?: number): Promise<ChildPage>
       getReclaimItem(scanId: string, path: string): Promise<ReclaimItem>
       trashReclaim(items: ReclaimItem[]): Promise<ReclaimResult>

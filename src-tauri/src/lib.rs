@@ -19,6 +19,7 @@ use types::*;
 use std::process::Command;
 
 struct Jobs {
+    scan: Arc<AtomicBool>,
     duplicates: Arc<AtomicBool>,
     benchmark: Arc<AtomicBool>,
 }
@@ -101,11 +102,18 @@ async fn scan(
     path: String,
     app: AppHandle,
     state: State<'_, ScanState>,
+    jobs: State<'_, Jobs>,
 ) -> Result<ScanResult, String> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || scanner::scan(path, app, &state))
+    let cancel = jobs.scan.clone();
+    cancel.store(false, Ordering::Relaxed);
+    tauri::async_runtime::spawn_blocking(move || scanner::scan(path, app, &state, cancel))
         .await
         .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+fn cancel_scan(jobs: State<Jobs>) {
+    jobs.scan.store(true, Ordering::Relaxed)
 }
 #[tauri::command]
 fn get_children(
@@ -320,6 +328,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(ScanState(Arc::new(Mutex::new(VecDeque::new()))))
         .manage(Jobs {
+            scan: Arc::new(AtomicBool::new(false)),
             duplicates: Arc::new(AtomicBool::new(false)),
             benchmark: Arc::new(AtomicBool::new(false)),
         })
@@ -328,6 +337,7 @@ pub fn run() {
             pick_folder,
             list_scan_locations,
             scan,
+            cancel_scan,
             get_children,
             get_reclaim_item,
             trash_reclaim,

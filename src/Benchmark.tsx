@@ -82,7 +82,7 @@ export function Benchmark({ target: initialTarget, onError }: { target?: string;
           {running ? <Button className="benchmark-stop" size="2" variant="soft" color="red" onClick={() => { track('benchmark_cancelled'); void window.diskloom.cancelBenchmark() }}><Square size={13}/> Stop</Button> : <Button className="benchmark-run" size="2" variant="solid" highContrast disabled={!target || selectedDrive?.readOnly || insufficientSpace} title={insufficientSpace ? 'Not enough free space for this test size' : undefined} onClick={() => void start()}><Play size={14} fill="currentColor"/> Run all</Button>}
         </div>
       </div>
-      <div className="benchmark-progress"><Progress value={progressValue} size="1"/><Text as="span" size="1" color="gray">{running ? progress?.current : report ? `Completed ${new Date(report.completedAt).toLocaleTimeString()}` : 'Ready to test'}</Text></div>
+      <div className="benchmark-progress" aria-live="polite"><Progress value={progressValue} size="1" aria-label="Benchmark progress"/><Text as="span" size="1" color="gray">{running ? progress?.current : report ? `Completed ${new Date(report.completedAt).toLocaleTimeString()}` : 'Ready to test'}</Text></div>
       <div className="benchmark-grid benchmark-labels"><span>Test</span><b>READ <small>MB/s</small></b><b>WRITE <small>MB/s</small></b></div>
       {(report?.results ?? [
         { id: 'seq1m-q8', label: 'SEQ1M', detail: 'Q8T1', read: 0, write: 0, readVariation: 0, writeVariation: 0 },

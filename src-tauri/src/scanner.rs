@@ -9,7 +9,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{sync_channel, Receiver, SyncSender},
         Arc, Mutex,
     },
@@ -84,6 +84,7 @@ struct IndexedNode {
     revision: String,
 }
 struct Counts {
+    cancel: Arc<AtomicBool>,
     items: AtomicU64,
     inaccessible: AtomicU64,
     excluded: AtomicU64,
@@ -277,9 +278,7 @@ fn persist(mut db: Connection, nodes: Receiver<Arc<IndexedNode>>) -> Result<Conn
         }
     }
     transaction
-        .execute_batch(
-            "CREATE INDEX nodes_parent_size ON nodes(parent,size DESC,name ASC);",
-        )
+        .execute_batch("CREATE INDEX nodes_parent_size ON nodes(parent,size DESC,name ASC);")
         .map_err(|e| e.to_string())?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(db)
@@ -299,10 +298,13 @@ fn walk<F>(
     counts: &Counts,
     progress: &F,
     output: &SyncSender<Arc<IndexedNode>>,
-) -> Arc<IndexedNode>
+) -> Result<Arc<IndexedNode>, String>
 where
     F: Fn(ScanProgress) + Sync,
 {
+    if counts.cancel.load(Ordering::Relaxed) {
+        return Err("Scan cancelled.".into());
+    }
     #[cfg(test)]
     counts
         .workers
@@ -333,7 +335,7 @@ where
                 inode: 0,
                 revision: "inaccessible".into(),
             };
-            return completed(node, output);
+            return Ok(completed(node, output));
         }
     };
     let (device, inode, allocated) = identity(&metadata);
@@ -362,7 +364,7 @@ where
             0,
             stat_revision(&metadata, "other"),
         );
-        return completed(node, output);
+        return Ok(completed(node, output));
     }
     if !metadata.is_dir() {
         let kind = if metadata.is_file() { "file" } else { "other" };
@@ -378,7 +380,7 @@ where
             }
         });
         let node = common(kind, size, false, 0, stat_revision(&metadata, kind));
-        return completed(node, output);
+        return Ok(completed(node, output));
     }
     let entries = match fs::read_dir(target) {
         Ok(v) => v,
@@ -391,14 +393,14 @@ where
                 0,
                 stat_revision(&metadata, "folder"),
             );
-            return completed(node, output);
+            return Ok(completed(node, output));
         }
     };
     let paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
     let mut children: Vec<_> = paths
         .into_par_iter()
         .map(|path| walk(&path, Some(target), counts, progress, output))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     let mut size = allocated;
     for child in &children {
         size = size.saturating_add(child.size);
@@ -419,7 +421,7 @@ where
         children.len(),
         hex::encode(hash.finalize()),
     );
-    completed(node, output)
+    Ok(completed(node, output))
 }
 
 fn parallelism(root: &Path) -> usize {
@@ -448,11 +450,13 @@ fn discover<F>(
     threads: usize,
     progress: &F,
     output: &SyncSender<Arc<IndexedNode>>,
+    cancel: Arc<AtomicBool>,
 ) -> Result<(Arc<IndexedNode>, Counts), String>
 where
     F: Fn(ScanProgress) + Sync,
 {
     let counts = Counts {
+        cancel,
         items: AtomicU64::new(0),
         inaccessible: AtomicU64::new(0),
         excluded: AtomicU64::new(0),
@@ -465,7 +469,7 @@ where
         .thread_name(|index| format!("diskloom-scan-{index}"))
         .build()
         .map_err(|e| e.to_string())?;
-    let scanned = pool.install(|| walk(root, None, &counts, progress, output));
+    let scanned = pool.install(|| walk(root, None, &counts, progress, output))?;
     Ok((scanned, counts))
 }
 
@@ -536,7 +540,12 @@ fn public_node(db: &Connection, node: IndexedNode, depth: usize) -> Result<DiskN
     })
 }
 
-pub fn scan(path: String, app: AppHandle, state: &ScanState) -> Result<ScanResult, String> {
+pub fn scan(
+    path: String,
+    app: AppHandle,
+    state: &ScanState,
+    cancel: Arc<AtomicBool>,
+) -> Result<ScanResult, String> {
     let started = Instant::now();
     let created_at = Utc::now();
     let root = fs::canonicalize(&path).map_err(|e| format!("Could not scan {path}: {e}"))?;
@@ -558,6 +567,7 @@ pub fn scan(path: String, app: AppHandle, state: &ScanState) -> Result<ScanResul
         parallelism(&root),
         &emit_progress,
         &node_sender,
+        cancel,
     );
     drop(node_sender);
     let db = writer
@@ -774,7 +784,14 @@ mod tests {
         create_table(&db).unwrap();
         let (sender, receiver) = sync_channel(128);
         let writer = std::thread::spawn(move || persist(db, receiver));
-        let discovered = discover(root, threads, &|_| {}, &sender).unwrap();
+        let discovered = discover(
+            root,
+            threads,
+            &|_| {},
+            &sender,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
         drop(sender);
         let db = writer.join().unwrap().unwrap();
         (db, discovered.0, discovered.1)
@@ -796,6 +813,17 @@ mod tests {
         assert!(paths_overlap("/data/photos", "/data/photos/trip/a.jpg"));
         assert!(paths_overlap("/data/photos/trip/a.jpg", "/data/photos"));
         assert!(!paths_overlap("/data/photos", "/data/photos-old"));
+    }
+
+    #[test]
+    fn discovery_honors_cancellation_before_work_starts() {
+        let root = fixture("cancelled-scan-test");
+        let (sender, _receiver) = sync_channel(1);
+        let error = discover(&root, 1, &|_| {}, &sender, Arc::new(AtomicBool::new(true)))
+            .err()
+            .unwrap();
+        assert_eq!(error, "Scan cancelled.");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -868,7 +896,10 @@ mod tests {
             .iter()
             .map(|path| find(&db, path).unwrap().unwrap().size)
             .sum();
-        assert_eq!(hard_link_total, allocated(&fs::metadata(&original).unwrap()));
+        assert_eq!(
+            hard_link_total,
+            allocated(&fs::metadata(&original).unwrap())
+        );
 
         let first = children(&db, &path_string(&wide), 0, 60).unwrap();
         let second = children(&db, &path_string(&wide), 60, 60).unwrap();

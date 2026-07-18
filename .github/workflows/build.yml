@@ -64,6 +64,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Verify Apple release credentials
+        if: matrix.isMac && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.MAC_CSC_LINK }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is required for a signed macOS release"
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Build, sign, and notarize
         run: pnpm tauri build ${{ matrix.args }}
         env:
@@ -72,6 +90,10 @@ jobs:
           APPLE_ID: ${{ matrix.isMac && secrets.APPLE_ID || '' }}
           APPLE_PASSWORD: ${{ matrix.isMac && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.isMac && secrets.APPLE_TEAM_ID || '' }}
+      - name: Verify macOS signature
+        if: matrix.isMac && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: codesign --verify --deep --strict --verbose=2 "$(find src-tauri/target -path '*/release/bundle/macos/Diskloom.app' -print -quit)"
       - name: Prepare macOS release artifacts
         if: matrix.isMac
         shell: bash

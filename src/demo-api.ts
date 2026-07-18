@@ -42,6 +42,7 @@ export const demoApi: DiskloomApi = {
     { id: 'storage', name: 'Demo Storage', path: root.path, kind: 'volume', totalBytes: 512 * 1024 ** 3, freeBytes: 328 * 1024 ** 3 },
   ],
   scan: async () => ({ id: 'demo-scan', root, startedAt: now, durationMs: 184, itemCount: 13, inaccessibleCount: 0, excludedCount: 0, unknownCount: 0, accessibleSize: root.size, accounting: 'allocated', unaccountedSize: null }),
+  cancelScan: async () => undefined,
   getChildren: async (_scanId, path, offset = 0, limit = 60) => {
     const items = find(root, path)?.children ?? []
     return { parentPath: path, children: items.slice(offset, offset + limit), offset, total: items.length, hasMore: offset + limit < items.length }
@@ -56,7 +57,12 @@ export const demoApi: DiskloomApi = {
   trashDuplicates: async () => ({ outcomes: [] }),
   onProgress: noopSubscription,
   onDuplicateProgress: noopSubscription,
-  runBenchmark: async (request) => ({ target: request.target, sizeMiB: request.sizeMiB, runs: request.runs, totalMemoryBytes: 16 * 1024 ** 3, completedAt: now, results: [] }),
+  runBenchmark: async (request) => ({ target: request.target, sizeMiB: request.sizeMiB, runs: request.runs, totalMemoryBytes: 16 * 1024 ** 3, completedAt: now, results: [
+    { id: 'seq1m-q8', label: 'SEQ1M', detail: 'Q8T1', read: 3274.81, write: 2812.44, readVariation: 1.8, writeVariation: 2.3 },
+    { id: 'seq1m-q1', label: 'SEQ1M', detail: 'Q1T1', read: 2148.36, write: 1976.52, readVariation: 2.1, writeVariation: 2.7 },
+    { id: 'rnd4k-q32', label: 'RND4K', detail: 'Q32T1', read: 624.42, write: 511.37, readVariation: 3.4, writeVariation: 4.1, readIops: 159851, writeIops: 130911 },
+    { id: 'rnd4k-q1', label: 'RND4K', detail: 'Q1T1', read: 72.18, write: 146.63, readVariation: 2.9, writeVariation: 3.6, readIops: 18478, writeIops: 37537 },
+  ] }),
   listBenchmarkDrives: async () => [{ id: 'demo', name: 'Demo Storage', mountPoint: root.path, totalBytes: 512 * 1024 ** 3, freeBytes: 328 * 1024 ** 3, readOnly: false }],
   getSystemMemory: async () => 16 * 1024 ** 3,
   cancelBenchmark: async () => undefined,

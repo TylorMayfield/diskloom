@@ -8,8 +8,9 @@ import { Sunburst } from './Sunburst'
 import { Duplicates } from './Duplicates'
 import { Benchmark } from './Benchmark'
 import { FileKindIcon } from './FileKindIcon'
+import { Modal } from './Modal'
 import { configureAnalytics, setAnalyticsConsent, track, trackScreen } from './analytics'
-import type { DiskNode, DuplicateAnalysisResult, DuplicateProgress, ScanLocation, ScanResult } from './types'
+import type { AppInfo, DiskNode, DuplicateAnalysisResult, DuplicateProgress, ScanLocation, ScanResult } from './types'
 import appIcon from '../docs/icon-transparent.png'
 
 const formatSize = (bytes: number) => {
@@ -53,8 +54,9 @@ export function App() {
   const [telemetryPromptVisible, setTelemetryPromptVisible] = useState(false)
   const [scanLocations, setScanLocations] = useState<ScanLocation[]>([])
   const [recentScans, setRecentScans] = useState<RecentScan[]>(savedRecentScans)
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
 
-  useEffect(() => { void window.diskloom.getAppInfo().then(configureAnalytics).catch(() => undefined) }, [])
+  useEffect(() => { void window.diskloom.getAppInfo().then((info) => { setAppInfo(info); configureAnalytics(info) }).catch(() => undefined) }, [])
   useEffect(() => { if (telemetryEnabled !== null) setAnalyticsConsent(telemetryEnabled) }, [telemetryEnabled])
   useEffect(() => window.diskloom.onProgress(setProgress), [])
   useEffect(() => window.diskloom.onDuplicateProgress(setDuplicateProgress), [])
@@ -81,8 +83,8 @@ export function App() {
       if (telemetryEnabled === null) setTelemetryPromptVisible(true)
       track('scan_completed', { duration_ms: Math.round(result.durationMs), item_count: result.itemCount, inaccessible_count: result.inaccessibleCount })
     } catch (cause) {
-      track('scan_failed')
-      setError(cause instanceof Error ? cause.message : 'The scan could not be completed.')
+      const message = cause instanceof Error ? cause.message : 'The scan could not be completed.'
+      if (!message.toLowerCase().includes('cancel')) { track('scan_failed'); setError(message) }
     } finally { setBusy(false) }
   }
 
@@ -217,7 +219,7 @@ export function App() {
         </div>
       </header>
 
-      {busy ? <main className="loading-state"><div className="scanner-orbit"><HardDrive size={38}/></div><h1>Mapping your disk</h1><p>{progress.items.toLocaleString()} items inspected</p><div className="progress-path">{progress.path}</div></main>
+      {busy ? <main className="loading-state" aria-live="polite"><div className="scanner-orbit"><HardDrive size={38}/></div><h1>Mapping your disk</h1><p>{progress.items.toLocaleString()} items inspected</p><div className="progress-path">{progress.path}</div><button className="secondary-btn scan-cancel" onClick={() => { track('scan_cancelled'); void window.diskloom.cancelScan() }}>Cancel scan</button></main>
       : view === 'benchmark' ? <Benchmark target={scan?.root.path} onError={setError}/>
       : !scan ? <main className="welcome">
           <div className="welcome-art"><img src={appIcon} alt=""/></div>
@@ -231,7 +233,7 @@ export function App() {
       : view === 'map' ? <main className="workspace">
           <section className="visual-panel"><Sunburst root={chartRoot ?? scan.root} selected={selected ?? scan.root} onSelect={inspectNode} onRequestTrash={setPendingTrash} formatSize={formatSize}/><div className="legend"><span><i className="dot folder-dot"/>Folders</span><span><i className="dot file-dot"/>Files</span><span>{scan.itemCount.toLocaleString()} items · {(scan.durationMs / 1000).toFixed(1)}s</span></div></section>
           <aside className="details-panel">
-            <div className="details-heading"><div className="detail-path" title={selected?.path}><FolderOpen size={15}/><span>{selected?.path}</span></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskloom.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskloom.reveal(selected.path)}>Show in folder</DropdownMenu.Item>{selected && selected.path !== scan.root.path && (selected.kind === 'file' || selected.kind === 'folder') && <><DropdownMenu.Separator className="menu-separator"/><DropdownMenu.Item className="menu-danger" onSelect={() => setPendingTrash(selected)}><Trash2 size={14}/> Move to Trash</DropdownMenu.Item></>}</DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
+            <div className="details-heading"><div className="detail-path" title={selected?.path}><FolderOpen size={15}/><span>{selected?.path}</span></div><DropdownMenu.Root><DropdownMenu.Trigger asChild><button className="icon-btn" aria-label={`More actions for ${selected?.name ?? 'selected item'}`} title="More actions"><MoreHorizontal/></button></DropdownMenu.Trigger><DropdownMenu.Portal><DropdownMenu.Content className="menu" align="end"><DropdownMenu.Item onSelect={() => selected && void window.diskloom.openPath(selected.path)}>Open</DropdownMenu.Item><DropdownMenu.Item onSelect={() => selected && void window.diskloom.reveal(selected.path)}>Show in folder</DropdownMenu.Item>{selected && selected.path !== scan.root.path && (selected.kind === 'file' || selected.kind === 'folder') && <><DropdownMenu.Separator className="menu-separator"/><DropdownMenu.Item className="menu-danger" onSelect={() => setPendingTrash(selected)}><Trash2 size={14}/> Move to Trash</DropdownMenu.Item></>}</DropdownMenu.Content></DropdownMenu.Portal></DropdownMenu.Root></div>
             <Theme className="contents-table-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
               <div className="contents-table-wrap"><Table.Root className="contents-table" variant="ghost" layout="fixed" size="2">
                 <Table.Header><Table.Row><Table.ColumnHeaderCell>Contents</Table.ColumnHeaderCell><Table.ColumnHeaderCell width="92px" justify="end">Size</Table.ColumnHeaderCell><Table.ColumnHeaderCell width="86px"><span className="sr-only">Actions</span></Table.ColumnHeaderCell></Table.Row></Table.Header>
@@ -254,20 +256,18 @@ export function App() {
           onMessage={(message, isError) => { isError ? setError(message) : setNotice(message) }}
           formatSize={formatSize}
         />}
-      {error && <div className="error-toast">{error}<button onClick={() => setError('')}><X size={16}/></button></div>}
-      {notice && <div className="notice-toast">{notice}<button onClick={() => setNotice('')}><X size={16}/></button></div>}
-      {pendingTrash && <div className="reclaim-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingTrash(null) }}><section className="reclaim-result trash-confirm" role="dialog" aria-modal="true" aria-label="Confirm deletion" aria-describedby="trash-confirm-description"><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM DELETION</p><p id="trash-confirm-description">This will remove {formatSize(pendingTrash.size)} from its current location. It can be recovered from the system Trash until the Trash is emptied.</p><small className="trash-confirm-path" title={pendingTrash.path}>{pendingTrash.path}</small><div className="reclaim-result-actions"><button className="secondary-btn" onClick={() => setPendingTrash(null)}>Cancel</button><button className="danger-btn" onClick={() => void trashNode(pendingTrash)}><Trash2 size={15}/> Move to Trash</button></div></section></div>}
+      {error && <div className="error-toast" role="alert" aria-live="assertive" aria-atomic="true">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
+      {notice && <div className="notice-toast" role="status" aria-live="polite" aria-atomic="true">{notice}<button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={16}/></button></div>}
+      {pendingTrash && <Modal backdropClassName="reclaim-result-backdrop" className="reclaim-result trash-confirm" labelledBy="trash-confirm-title" describedBy="trash-confirm-description" onClose={() => setPendingTrash(null)}><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM DELETION</p><h2 id="trash-confirm-title">Move “{pendingTrash.name}” to Trash?</h2><p id="trash-confirm-description">This will remove {formatSize(pendingTrash.size)} from its current location. It can be recovered from the system Trash until the Trash is emptied.</p><small className="trash-confirm-path" title={pendingTrash.path}>{pendingTrash.path}</small><div className="reclaim-result-actions"><button className="secondary-btn" data-autofocus onClick={() => setPendingTrash(null)}>Cancel</button><button className="danger-btn" onClick={() => void trashNode(pendingTrash)}><Trash2 size={15}/> Move to Trash</button></div></Modal>}
       {telemetryPromptVisible && <aside className="telemetry-prompt" aria-label="Anonymous analytics choice"><div><b>Help improve Diskloom?</b><span>Share anonymous feature usage—never paths, filenames, or file contents.</span></div><button className="text-btn" onClick={() => chooseTelemetry(false)}>Don’t share</button><button className="primary-btn" onClick={() => chooseTelemetry(true)}>Allow analytics</button></aside>}
-      {aboutDialogOpen && <div className="telemetry-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAboutDialogOpen(false) }}>
-        <section className="telemetry-dialog about-dialog" role="dialog" aria-modal="true" aria-labelledby="about-title" aria-describedby="about-description">
+      {aboutDialogOpen && <Modal backdropClassName="telemetry-backdrop" className="telemetry-dialog about-dialog" labelledBy="about-title" describedBy="about-description" onClose={() => setAboutDialogOpen(false)}>
           <button className="telemetry-close" aria-label="Close about and privacy" onClick={() => setAboutDialogOpen(false)}><X size={17}/></button>
-          <div className="about-brand"><img src={appIcon} alt=""/><div><p className="eyebrow">LOCAL-FIRST DISK UTILITY</p><h2 id="about-title">Diskloom</h2></div></div>
+          <div className="about-brand"><img src={appIcon} alt=""/><div><p className="eyebrow">LOCAL-FIRST DISK UTILITY</p><h2 id="about-title">Diskloom</h2>{appInfo && <small>Version {appInfo.version}</small>}</div></div>
           <p id="about-description">A free, open-source disk space explorer. Scans, file details, duplicate comparisons, and benchmark results stay on this computer.</p>
           <div className="about-links"><a href="https://ko-fi.com/tylormayfield" target="_blank" rel="noreferrer">Support Diskloom ♡</a><a href="https://www.tylor.nz/legal" target="_blank" rel="noreferrer">Privacy &amp; Terms ↗</a><a href="https://github.com/TylorMayfield/diskloom/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License ↗</a></div>
           <div className="privacy-settings"><div><b>Anonymous analytics</b><span>{telemetryEnabled === true ? 'Enabled' : telemetryEnabled === false ? 'Disabled' : 'Not enabled'}</span></div><p>Includes app version, platform, feature usage, and coarse timing. Never includes paths, filenames, file contents, hashes, drive names, or benchmark results.</p></div>
           <div className="telemetry-actions"><button className="secondary-btn" onClick={() => chooseTelemetry(false)}>Don’t share</button><button className="primary-btn" onClick={() => chooseTelemetry(true)}>Allow anonymous analytics</button></div>
-        </section>
-      </div>}
+      </Modal>}
     </div>
   </Tooltip.Provider>
 }
