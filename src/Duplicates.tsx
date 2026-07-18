@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Table, Theme } from '@radix-ui/themes'
 import { ChevronDown, ChevronRight, Copy, ExternalLink, FolderOpen, LoaderCircle, Search, Trash2 } from 'lucide-react'
 import type { DuplicateAnalysisResult, DuplicateFile, DuplicateGroup, DuplicateProgress } from './types'
+import { FileKindIcon } from './FileKindIcon'
 import { track } from './analytics'
 
 type Props = {
@@ -28,6 +29,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [cleaning, setCleaning] = useState(false)
+  const [confirmCleanup, setConfirmCleanup] = useState(false)
   useEffect(() => {
     if (!analyzing) return
     setRetained({}); setSelected(new Set()); setExpanded(new Set())
@@ -65,7 +67,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
 
   const clean = async () => {
     if (!result || !selectedFiles.length) return
-    if (!window.confirm(`Move ${selectedFiles.length.toLocaleString()} selected duplicate${selectedFiles.length === 1 ? '' : 's'} to the Trash?\n\nThis can reclaim ${formatSize(reclaimable)}. At least one copy from every group will be retained.`)) return
+    setConfirmCleanup(false)
     setCleaning(true)
     try {
       const groups = result.groups.map((group) => ({
@@ -103,7 +105,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
   if (!result) return <section className="duplicates-state"><div className="duplicate-hero"><Copy size={48}/></div><h2>Find duplicate files</h2><p>Diskloom groups files by size, then privately compares only likely matches. File contents never leave this computer.</p><button className="hero-btn" onClick={onAnalyze}><Search size={18}/> Analyze duplicates</button></section>
   if (!result.groups.length) return <section className="duplicates-state"><div className="duplicate-hero"><Copy size={48}/></div><h2>No duplicates found</h2><p>{result.scannedFileCount.toLocaleString()} files inspected and {result.hashedFileCount.toLocaleString()} candidates compared.</p><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></section>
 
-  return <section className="duplicates-results">
+  return <><section className="duplicates-results">
     <div className="duplicates-summary"><div><p className="eyebrow">RECLAIMABLE SPACE</p><strong>{formatSize(result.totalWastedSpace)}</strong></div><div><b>{result.groups.length.toLocaleString()}</b><span>duplicate groups</span></div><div><b>{result.duplicateFileCount.toLocaleString()}</b><span>extra copies</span></div><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></div>
     <Theme className="duplicate-table-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
     <div className="duplicate-table-wrap"><Table.Root className="duplicate-table" variant="surface" layout="fixed" size="2">
@@ -122,7 +124,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
       </Table.Row>
         {open && group.files.map((file) => <Table.Row className={file.path === keep ? 'duplicate-data-row kept' : 'duplicate-data-row'} key={file.path}>
           <Table.Cell><input type="checkbox" checked={selected.has(file.path)} disabled={file.path === keep} aria-label={`Select ${file.name} for Trash`} onChange={(event) => setSelected((current) => { const next = new Set(current); event.target.checked ? next.add(file.path) : next.delete(file.path); return next })}/></Table.Cell>
-          <Table.RowHeaderCell><div className="duplicate-file-info"><b>{file.name}</b><span title={file.parentPath}>{file.parentPath}</span><small>Created {dateText(file.createdAt)}</small></div></Table.RowHeaderCell>
+          <Table.RowHeaderCell><div className="duplicate-file-cell"><FileKindIcon name={file.name} kind="file"/><div className="duplicate-file-info"><b>{file.name}</b><span title={file.parentPath}>{file.parentPath}</span><small>Created {dateText(file.createdAt)}</small></div></div></Table.RowHeaderCell>
           <Table.Cell className="duplicate-date">{dateText(file.modifiedAt)}</Table.Cell>
           <Table.Cell justify="end" className="duplicate-size">{formatSize(file.size)}</Table.Cell>
           <Table.Cell><button className="keep-btn" onClick={() => chooseRetained(group, file.path)}>{file.path === keep ? 'Keeping' : 'Keep this'}</button></Table.Cell>
@@ -130,6 +132,8 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
         </Table.Row>)}</Fragment>
       })}</Table.Body>
     </Table.Root></div></Theme>
-    <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => void clean()}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
+    <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => setConfirmCleanup(true)}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
   </section>
+    {confirmCleanup && <div className="reclaim-result-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmCleanup(false) }}><section className="reclaim-result trash-confirm" role="dialog" aria-modal="true" aria-labelledby="duplicate-cleanup-title" aria-describedby="duplicate-cleanup-description"><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM CLEANUP</p><h2 id="duplicate-cleanup-title">Move {selectedFiles.length.toLocaleString()} duplicate{selectedFiles.length === 1 ? '' : 's'} to Trash?</h2><p id="duplicate-cleanup-description">This can free {formatSize(reclaimable)}. Diskloom will retain at least one copy from every duplicate group, and removed files remain recoverable until the system Trash is emptied.</p><div className="reclaim-result-actions"><button className="secondary-btn" onClick={() => setConfirmCleanup(false)}>Cancel</button><button className="danger-btn" onClick={() => void clean()}><Trash2 size={15}/> Move to Trash</button></div></section></div>}
+  </>
 }

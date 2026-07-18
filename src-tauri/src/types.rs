@@ -167,3 +167,14 @@ pub struct BenchmarkDrive {
     pub free_bytes: u64,
     pub read_only: bool,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanLocation {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub total_bytes: Option<u64>,
+    pub free_bytes: Option<u64>,
+}

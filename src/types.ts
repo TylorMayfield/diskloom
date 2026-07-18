@@ -47,11 +47,13 @@ export type BenchmarkProgress = { completed: number; total: number; current: str
 export type BenchmarkResult = { id: string; label: string; detail: string; read: number; write: number; readVariation: number; writeVariation: number; readIops?: number; writeIops?: number }
 export type BenchmarkReport = { target: string; sizeMiB: number; runs: number; totalMemoryBytes: number; completedAt: string; results: BenchmarkResult[] }
 export type BenchmarkDrive = { id: string; name: string; mountPoint: string; totalBytes: number; freeBytes: number; readOnly: boolean }
+export type ScanLocation = { id: string; name: string; path: string; kind: 'home' | 'volume'; totalBytes?: number; freeBytes?: number }
 export type AppInfo = { version: string; platform: 'aix' | 'darwin' | 'freebsd' | 'linux' | 'openbsd' | 'sunos' | 'win32'; arch: string; tauriVersion: string }
 
 export type DiskloomApi = {
       getAppInfo(): Promise<AppInfo>
       pickFolder(): Promise<string | null>
+      listScanLocations(): Promise<ScanLocation[]>
       scan(path: string): Promise<ScanResult>
       getChildren(scanId: string, path: string, offset?: number, limit?: number): Promise<ChildPage>
       getReclaimItem(scanId: string, path: string): Promise<ReclaimItem>

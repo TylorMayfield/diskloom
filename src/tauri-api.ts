@@ -20,6 +20,7 @@ const subscribe = <T>(event: string, listener: (payload: T) => void) => {
 const api: DiskloomApi = {
   getAppInfo: () => command('get_app_info'),
   pickFolder: () => command('pick_folder'),
+  listScanLocations: () => command('list_scan_locations'),
   scan: (path) => command<ScanResult>('scan', { path }),
   getChildren: (scanId, path, offset, limit) => command<ChildPage>('get_children', { scanId, path, offset, limit }),
   getReclaimItem: (scanId, path) => command('get_reclaim_item', { scanId, path }),
@@ -39,11 +40,16 @@ const api: DiskloomApi = {
   onBenchmarkProgress: (listener: (progress: BenchmarkProgress) => void) => subscribe('benchmark-progress', listener),
 }
 
-window.diskloom = api
+let demoMode = false
+
+export async function configureDiskloomApi() {
+  demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo')
+  window.diskloom = demoMode ? (await import('./demo-api')).demoApi : api
+}
 
 document.addEventListener('click', (event) => {
   const anchor = (event.target as Element | null)?.closest('a[target="_blank"]')
   if (!(anchor instanceof HTMLAnchorElement) || !/^https?:$/.test(new URL(anchor.href).protocol)) return
   event.preventDefault()
-  void invoke('open_external', { url: anchor.href })
+  if (!demoMode) void invoke('open_external', { url: anchor.href })
 })

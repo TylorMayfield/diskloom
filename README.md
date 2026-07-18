@@ -27,7 +27,6 @@ Download the latest Diskloom desktop app for your platform:
 - Scan every accessible descendant of drives or individual folders with allocated-byte totals.
 - Page through the complete on-disk local scan index without dropping smaller items from exploration or retaining the whole tree in memory.
 - Find large files and duplicate files.
-- Build a persistent Reclaim List, review risky locations and changed items, then move approved items to Trash together.
 - Keep filenames, paths, file contents, and scan results private.
 - Run on macOS, Windows, and Linux.
 
@@ -37,7 +36,7 @@ Symlink targets are not followed, inaccessible paths and unaccounted volume spac
 
 Diskloom privately compares likely matches, shows how much space duplicate files consume, and lets you choose which copy to keep.
 
-![Diskloom duplicate file finder showing reclaimable storage](docs/images/diskloom-duplicate-file-finder.png)
+![Diskloom duplicate file finder showing removable duplicate storage](docs/images/diskloom-duplicate-file-finder.png)
 
 ## Development
 
@@ -54,7 +53,7 @@ pnpm dev
 pnpm build
 ```
 
-The filesystem scanner, duplicate finder, reclaim safeguards, and storage benchmark run locally in the Rust backend. The React renderer communicates with it through typed Tauri commands and events.
+The filesystem scanner, duplicate finder, cleanup safeguards, and storage benchmark run locally in the Rust backend. The React renderer communicates with it through typed Tauri commands and events.
 
 ## Support
 

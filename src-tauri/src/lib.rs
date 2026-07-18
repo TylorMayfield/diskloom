@@ -58,6 +58,45 @@ fn dirs_home() -> std::path::PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
 }
 #[tauri::command]
+fn list_scan_locations() -> Vec<ScanLocation> {
+    let home = dirs_home();
+    let home_path = home
+        .canonicalize()
+        .unwrap_or(home)
+        .to_string_lossy()
+        .into_owned();
+    let drives = benchmark::drives();
+    let home_drive = drives
+        .iter()
+        .filter(|drive| std::path::Path::new(&home_path).starts_with(&drive.mount_point))
+        .max_by_key(|drive| drive.mount_point.len());
+    let mut locations = vec![ScanLocation {
+        id: format!("home:{home_path}"),
+        name: "Home folder".into(),
+        path: home_path,
+        kind: "home".into(),
+        total_bytes: home_drive.map(|drive| drive.total_bytes),
+        free_bytes: home_drive.map(|drive| drive.free_bytes),
+    }];
+    for drive in drives {
+        if locations
+            .iter()
+            .any(|location| location.path == drive.mount_point)
+        {
+            continue;
+        }
+        locations.push(ScanLocation {
+            id: format!("volume:{}", drive.id),
+            name: drive.name,
+            path: drive.mount_point,
+            kind: "volume".into(),
+            total_bytes: Some(drive.total_bytes),
+            free_bytes: Some(drive.free_bytes),
+        });
+    }
+    locations
+}
+#[tauri::command]
 async fn scan(
     path: String,
     app: AppHandle,
@@ -287,6 +326,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             pick_folder,
+            list_scan_locations,
             scan,
             get_children,
             get_reclaim_item,
