@@ -1,6 +1,6 @@
 [package]
 name = "diskloom"
-version = "2.0.9"
+version = "2.0.10"
 description = "A beautiful, local-first disk space explorer"
 authors = ["BarkOnTrack LLC"]
 license = "MIT"

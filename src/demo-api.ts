@@ -35,7 +35,7 @@ const duplicates: DuplicateAnalysisResult = {
 const noopSubscription = () => () => undefined
 
 export const demoApi: DiskloomApi = {
-  getAppInfo: async () => ({ version: '2.0.9', platform: 'linux', arch: 'x64', tauriVersion: '2' }),
+  getAppInfo: async () => ({ version: '2.0.10', platform: 'linux', arch: 'x64', tauriVersion: '2' }),
   pickFolder: async () => root.path,
   listScanLocations: async () => [
     { id: 'home', name: 'Home folder', path: 'Home', kind: 'home' },
