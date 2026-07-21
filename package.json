@@ -17,7 +17,7 @@
     "test": "pnpm typecheck && cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
-    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-dropdown-menu": "^2.1.21",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@radix-ui/themes": "^3.3.0",
     "lucide-react": "^0.468.0",
