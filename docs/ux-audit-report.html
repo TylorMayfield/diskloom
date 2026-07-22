@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diskloom UX Audit — July 2026</title>
+  <meta name="description" content="A heuristic UX audit of Diskloom 2.0.10, covering onboarding, disk exploration, duplicate cleanup, benchmarking, accessibility, and the minimum supported window size.">
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f7f4ee;
+      --muted: #aaa8a4;
+      --quiet: #7f7d79;
+      --paper: #101114;
+      --panel: #17181d;
+      --panel-2: #1e1f25;
+      --line: rgba(255,255,255,.10);
+      --accent: #ffba64;
+      --accent-2: #f58b58;
+      --high: #ff7d85;
+      --medium: #ffbd66;
+      --low: #7ec6ff;
+      --good: #83d7aa;
+      --shadow: 0 24px 70px rgba(0,0,0,.30);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% -5%, rgba(255,159,71,.14), transparent 32rem),
+        radial-gradient(circle at 90% 5%, rgba(142,105,255,.09), transparent 29rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: inherit; }
+    button { font: inherit; }
+    img { max-width: 100%; }
+    code, .source {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 58px;
+      padding: 0 clamp(20px, 4vw, 60px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(16,17,20,.82);
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 760; letter-spacing: -.02em; }
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      border: 5px solid var(--accent);
+      border-right-color: #ff6f72;
+      border-bottom-color: #806bff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(255,166,78,.22);
+    }
+    .topbar nav { display: flex; gap: 5px; }
+    .topbar nav a {
+      padding: 7px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .topbar nav a:hover, .topbar nav a:focus-visible { color: var(--ink); background: rgba(255,255,255,.06); outline: none; }
+
+    .hero, .page-grid { width: min(1260px, calc(100% - 40px)); margin-inline: auto; }
+    .hero { padding: clamp(64px, 10vw, 120px) 0 58px; }
+    .eyebrow {
+      margin: 0 0 18px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { margin-top: 0; letter-spacing: -.035em; line-height: 1.08; }
+    h1 { max-width: 880px; margin-bottom: 24px; font-size: clamp(44px, 7vw, 92px); }
+    h1 span { color: var(--accent); }
+    .hero-copy { max-width: 720px; margin: 0; color: #c5c2bc; font-size: clamp(18px, 2.1vw, 25px); line-height: 1.5; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 34px; }
+    .meta-row span, .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255,255,255,.03);
+      font-size: 12px;
+    }
+
+    .page-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 52px; align-items: start; padding-bottom: 100px; }
+    .side-nav { position: sticky; top: 84px; display: grid; gap: 5px; }
+    .side-nav a { padding: 8px 10px; border-radius: 8px; color: var(--quiet); font-size: 13px; text-decoration: none; }
+    .side-nav a:hover, .side-nav a:focus-visible { color: var(--ink); background: rgba(255,255,255,.05); outline: none; }
+    .side-nav a:first-child { color: var(--accent); }
+
+    main { min-width: 0; }
+    section { scroll-margin-top: 84px; }
+    .section { padding: 52px 0; border-top: 1px solid var(--line); }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    h2 { margin-bottom: 10px; font-size: clamp(30px, 4vw, 48px); }
+    h3 { font-size: 22px; }
+    .section-intro { max-width: 700px; margin: 0; color: var(--muted); font-size: 16px; }
+
+    .summary-grid { display: grid; grid-template-columns: 1.3fr repeat(3, minmax(125px, .55fr)); gap: 12px; }
+    .summary-card, .card, .finding, .strength, .plan-step, .method-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(30,31,37,.95), rgba(21,22,27,.95));
+      box-shadow: var(--shadow);
+    }
+    .summary-card { min-height: 150px; padding: 22px; }
+    .summary-card.primary { background: linear-gradient(145deg, rgba(54,37,25,.98), rgba(24,22,23,.98)); }
+    .summary-card small { color: var(--quiet); font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .summary-card strong { display: block; margin: 13px 0 5px; font-size: 32px; line-height: 1; }
+    .summary-card.primary strong { color: var(--accent); font-size: 38px; }
+    .summary-card p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .verdict {
+      margin-top: 14px;
+      padding: 22px 24px;
+      border-left: 3px solid var(--accent);
+      border-radius: 0 14px 14px 0;
+      color: #d7d3cc;
+      background: rgba(255,184,92,.07);
+      font-size: 16px;
+    }
+
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .filter {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255,255,255,.03);
+      cursor: pointer;
+    }
+    .filter:hover, .filter:focus-visible, .filter.active { color: #17120c; border-color: transparent; background: var(--accent); outline: none; }
+    .findings { display: grid; gap: 14px; }
+    .finding { position: relative; overflow: hidden; padding: 26px; }
+    .finding::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--severity); }
+    .finding[hidden] { display: none; }
+    .finding-head { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: start; }
+    .number {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid color-mix(in srgb, var(--severity), transparent 60%);
+      border-radius: 10px;
+      color: var(--severity);
+      background: color-mix(in srgb, var(--severity), transparent 90%);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .finding h3 { margin: 3px 0 8px; }
+    .finding-summary { margin: 0; color: var(--muted); }
+    .severity { padding: 4px 8px; border-radius: 999px; color: var(--severity); background: color-mix(in srgb, var(--severity), transparent 90%); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .finding-body { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin: 24px 0 0 48px; }
+    .finding-body h4 { margin: 0 0 7px; color: var(--quiet); font-size: 11px; letter-spacing: .11em; text-transform: uppercase; }
+    .finding-body p, .finding-body ul { margin: 0; color: #cbc8c2; font-size: 14px; }
+    .finding-body ul { padding-left: 18px; }
+    .finding-body li + li { margin-top: 5px; }
+    .source { grid-column: 1 / -1; padding-top: 16px; border-top: 1px solid var(--line); color: var(--quiet); font-size: 11px; }
+    .high { --severity: var(--high); }
+    .medium { --severity: var(--medium); }
+    .low { --severity: var(--low); }
+
+    .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    figure {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    figure.wide { grid-column: 1 / -1; }
+    figure img { display: block; width: 100%; height: auto; background: #0b0c10; }
+    figcaption { padding: 14px 16px; color: var(--muted); font-size: 12px; }
+    figcaption b { color: var(--ink); }
+
+    .strengths { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    .strength { padding: 22px; box-shadow: none; }
+    .strength .check { color: var(--good); font-size: 20px; }
+    .strength h3 { margin: 10px 0 8px; font-size: 18px; }
+    .strength p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .plan { display: grid; gap: 12px; counter-reset: plan; }
+    .plan-step { display: grid; grid-template-columns: 88px 1fr auto; gap: 20px; align-items: start; padding: 22px; box-shadow: none; counter-increment: plan; }
+    .plan-step .when { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .plan-step h3 { margin-bottom: 6px; font-size: 18px; }
+    .plan-step p { margin: 0; color: var(--muted); font-size: 14px; }
+    .plan-step .effort { color: var(--quiet); font-size: 12px; white-space: nowrap; }
+
+    .method-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    .method-card { padding: 22px; box-shadow: none; }
+    .method-card h3 { margin-bottom: 10px; font-size: 17px; }
+    .method-card p, .method-card ul { margin: 0; color: var(--muted); font-size: 14px; }
+    .method-card ul { padding-left: 19px; }
+    .method-card li + li { margin-top: 5px; }
+    footer { padding: 28px 0 10px; color: var(--quiet); font-size: 12px; }
+
+    @media (max-width: 960px) {
+      .page-grid { grid-template-columns: 1fr; }
+      .side-nav { display: none; }
+      .summary-grid { grid-template-columns: 1fr 1fr; }
+      .summary-card.primary { grid-column: 1 / -1; }
+      .finding-body { grid-template-columns: 1fr; }
+      .source { grid-column: auto; }
+      .gallery, .strengths, .method-grid { grid-template-columns: 1fr; }
+      figure.wide { grid-column: auto; }
+    }
+    @media (max-width: 640px) {
+      .topbar nav { display: none; }
+      .hero, .page-grid { width: min(100% - 28px, 1260px); }
+      .hero { padding-top: 52px; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .summary-card.primary { grid-column: auto; }
+      .section-head { align-items: start; flex-direction: column; }
+      .finding { padding: 20px; }
+      .finding-head { grid-template-columns: auto 1fr; }
+      .severity { grid-column: 2; justify-self: start; }
+      .finding-body { margin-left: 0; }
+      .plan-step { grid-template-columns: 1fr; gap: 8px; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    @media print {
+      :root { color-scheme: light; --ink: #181818; --muted: #4c4c4c; --quiet: #686868; --paper: #fff; --panel: #fff; --panel-2: #fff; --line: rgba(0,0,0,.15); }
+      body { background: #fff; }
+      .topbar, .side-nav, .filter-bar { display: none; }
+      .hero, .page-grid { width: 100%; }
+      .hero { padding: 24px 0; }
+      .page-grid { display: block; }
+      .section { break-inside: avoid; padding: 28px 0; }
+      .finding, figure, .summary-card { box-shadow: none; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span> Diskloom UX audit</div>
+    <nav aria-label="Report sections">
+      <a href="#summary">Summary</a>
+      <a href="#findings">Findings</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <p class="eyebrow">Heuristic product review · July 21, 2026</p>
+    <h1>A polished utility with <span>trust and accessibility gaps.</span></h1>
+    <p class="hero-copy">Diskloom makes a strong first impression and handles irreversible actions with care. The highest-value work is to make the disk map truthful and keyboard-operable, protect benchmark interpretation, and add context before duplicate cleanup.</p>
+    <div class="meta-row" aria-label="Audit metadata">
+      <span>Version 2.0.10</span>
+      <span>React + Tauri desktop app</span>
+      <span>1280×720 and 980×680</span>
+      <span>Demo scan: 13 items</span>
+      <span>7 prioritized findings</span>
+    </div>
+  </div>
+
+  <div class="page-grid">
+    <aside class="side-nav" aria-label="On this page">
+      <a href="#summary">Executive summary</a>
+      <a href="#findings">Prioritized findings</a>
+      <a href="#evidence">Visual evidence</a>
+      <a href="#strengths">What is working</a>
+      <a href="#roadmap">Recommended roadmap</a>
+      <a href="#method">Method and scope</a>
+    </aside>
+
+    <main>
+      <section class="section" id="summary">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Executive summary</p>
+            <h2>Strong foundation, moderate–high UX risk</h2>
+            <p class="section-intro">The visual system and onboarding are already release-quality. Four high-priority findings affect comprehension, inclusive access, or user trust in destructive and performance workflows.</p>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <article class="summary-card primary">
+            <small>Overall assessment</small>
+            <strong>7.3 / 10</strong>
+            <p>Good usability with material gaps in the product’s core visualization and trust-sensitive flows.</p>
+          </article>
+          <article class="summary-card">
+            <small>High priority</small>
+            <strong style="color:var(--high)">4</strong>
+            <p>Accessibility, semantics, benchmark validity, cleanup trust</p>
+          </article>
+          <article class="summary-card">
+            <small>Medium priority</small>
+            <strong style="color:var(--medium)">3</strong>
+            <p>Narrow-window usability, scan feedback, visual accessibility</p>
+          </article>
+          <article class="summary-card">
+            <small>Experience strength</small>
+            <strong style="color:var(--good)">First run</strong>
+            <p>Clear value, privacy promise, and primary action</p>
+          </article>
+        </div>
+        <div class="verdict"><b>Bottom line:</b> keep the visual direction. Focus the next release on meaning and safety: every color should communicate something true, every primary task should work without a mouse, benchmark caveats should appear before a run, and deletion recommendations should require an explicit opt-in.</div>
+      </section>
+
+      <section class="section" id="findings">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Prioritized findings</p>
+            <h2>What to fix first</h2>
+            <p class="section-intro">Severity reflects impact and likelihood in the supported desktop experience, not implementation complexity.</p>
+          </div>
+        </div>
+        <div class="filter-bar" role="group" aria-label="Filter findings by severity">
+          <button class="filter active" type="button" data-filter="all">All 7</button>
+          <button class="filter" type="button" data-filter="high">High 4</button>
+          <button class="filter" type="button" data-filter="medium">Medium 3</button>
+        </div>
+        <div class="findings">
+          <article class="finding high" data-severity="high">
+            <div class="finding-head">
+              <span class="number">01</span>
+              <div><h3>The primary disk map is mouse-only</h3><p class="finding-summary">All 11 visible chart segments are clickable SVG paths, but none can receive keyboard focus or expose a name, size, or type to assistive technology.</p></div>
+              <span class="severity">High</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>Keyboard and screen-reader users cannot explore or drill into the product’s signature visualization. They can use the side table, but that is not a functional equivalent for navigating the hierarchy.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Give segments button semantics, roving keyboard focus, and Enter/Space activation.</li><li>Expose “name, type, size, percent of parent” through accessible labels.</li><li>Offer a synchronized tree/list alternative that mirrors chart selection.</li></ul></div>
+              <div class="source">Evidence: browser focus inventory; src/Sunburst.tsx:73–85. The SVG has role="img" while path and center interactions rely on mouse events.</div>
+            </div>
+          </article>
+
+          <article class="finding high" data-severity="high">
+            <div class="finding-head">
+              <span class="number">02</span>
+              <div><h3>The legend describes an encoding the chart does not use</h3><p class="finding-summary">The legend says orange means folders and purple means files. In practice, colors identify top-level branches and are inherited by their descendants.</p></div>
+              <span class="severity">High</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>Users can make a false inference about what occupies space. This damages trust precisely where Diskloom should be helping people reason about their storage.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Either encode file/folder type consistently or relabel the legend to explain branch colors and ring depth.</li><li>Add persistent labels for the largest segments and a selection summary outside the SVG.</li><li>Test the chart with mixed file and folder nodes at every depth.</li></ul></div>
+              <div class="source">Evidence: src/Sunburst.tsx:5, 23–40 assigns colors by depth/index; src/App.tsx:233–234 and src/styles.css:33–35 present a folder/file legend.</div>
+            </div>
+          </article>
+
+          <article class="finding high" data-severity="high">
+            <div class="finding-head">
+              <span class="number">03</span>
+              <div><h3>The default benchmark can produce cache-inflated results</h3><p class="finding-summary">A 128 MiB test is selected by default on a 16 GB system. Diskloom knows the test can be cached, but the warning is 9 px text below the results and below the fold at the minimum window size.</p></div>
+              <span class="severity">High</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>Users may treat an easy-to-run number as disk performance when it may partly reflect memory caching. This is a trust problem, not just an advanced-user caveat.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Surface a prominent pre-run “cache may affect this test” state beside Test size.</li><li>Recommend a safe preset based on memory, available space, expected duration, and platform behavior.</li><li>Label completed results “cache-influenced” when the warning condition remains true.</li></ul></div>
+              <div class="source">Evidence: src/Benchmark.tsx:13–14 defaults to 3 runs / 128 MiB; 53 detects cache risk; 82 still enables Run all; 97 shows the caveat. src/styles.css:89 renders it at 9 px.</div>
+            </div>
+          </article>
+
+          <article class="finding high" data-severity="high">
+            <div class="finding-head">
+              <span class="number">04</span>
+              <div><h3>Duplicate cleanup hides scope and starts in a destructive state</h3><p class="finding-summary">The duplicates intro and results omit the scanned root. Once results load, every non-retained copy is selected for Trash automatically using an “oldest copy” heuristic.</p></div>
+              <span class="severity">High</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>A user switching between scans can lose context, while the enabled Trash action implies the product has already made the deletion decision. The confirmation dialog is strong, but arrives after this trust gap.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Keep the root path visible in the intro, results summary, and confirmation.</li><li>Start with zero files selected; offer “Select recommended copies” with a short explanation.</li><li>Explain the retain heuristic and mark ambiguous groups for manual review.</li></ul></div>
+              <div class="source">Evidence: src/Duplicates.tsx:39–55 auto-selects every file except the heuristic keep; 106 and 109–110 omit rootPath; rootPath appears only during analysis at 103.</div>
+            </div>
+          </article>
+
+          <article class="finding medium" data-severity="medium">
+            <div class="finding-head">
+              <span class="number">05</span>
+              <div><h3>The minimum supported window compresses names and controls too far</h3><p class="finding-summary">At 980×680, the details panel narrows to 340 px and common folder names render as “Proje…”, “Down…”, and “Docu…” without a native title. Row actions measure only 24×28 and 28×28 px.</p></div>
+              <span class="severity">Medium</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>Similar prefixes become indistinguishable and small icon targets increase selection errors, particularly next to the destructive Trash action.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Reduce fixed Size/Actions columns or allow the panel to resize.</li><li>Add full-name tooltips and keep the row itself as the primary drill-in target.</li><li>Use at least 36–40 px targets and separate Trash spatially from navigation.</li></ul></div>
+              <div class="source">Evidence: configured minWidth/minHeight is 980×680; browser measurement; src/styles.css:42–45. src/App.tsx:239–243 gives fixed 92 px and 86 px columns.</div>
+            </div>
+          </article>
+
+          <article class="finding medium" data-severity="medium">
+            <div class="finding-head">
+              <span class="number">06</span>
+              <div><h3>Long scans provide activity, not progress</h3><p class="finding-summary">The scan screen shows an animated disk, item count, current path, and Cancel. It does not show elapsed time, throughput, phase, or a clear explanation that total progress may be unknowable.</p></div>
+              <span class="severity">Medium</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>On large or slow volumes, users cannot judge whether the app is healthy or whether waiting is worthwhile. A changing path alone is hard to monitor.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Show elapsed time and items per second.</li><li>Label the state “Scanning — total size is discovered as we go” when percent complete is unavailable.</li><li>Surface inaccessible-item count during the run if it changes.</li></ul></div>
+              <div class="source">Evidence: src/App.tsx:222 exposes item count, path, and Cancel only. The app already records duration and inaccessible counts in the completed result.</div>
+            </div>
+          </article>
+
+          <article class="finding medium" data-severity="medium">
+            <div class="finding-head">
+              <span class="number">07</span>
+              <div><h3>Critical microcopy is too faint, and reduced motion is incomplete</h3><p class="finding-summary">The chart hint and benchmark note measure about 3.42:1 and 3.37:1 contrast respectively, despite being only 9–10 px. Reduced-motion styling disables chart entry animation but not continuous scan/progress spinners.</p></div>
+              <span class="severity">Medium</span>
+            </div>
+            <div class="finding-body">
+              <div><h4>Impact</h4><p>Low-vision users may miss instructions and benchmark caveats, while motion-sensitive users still receive continuous rotation during the longest waits.</p></div>
+              <div><h4>Recommendation</h4><ul><li>Raise small-text contrast to at least 4.5:1 and avoid 9 px for consequential text.</li><li>Apply reduced-motion handling to scanner orbit, loading spinners, and fades.</li><li>Replace motion with a static progress mark when the preference is active.</li></ul></div>
+              <div class="source">Evidence: computed contrast from src/styles.css colors; src/styles.css:32, 55, 64, 70, and 89.</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="evidence">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Visual evidence</p>
+            <h2>What the walkthrough revealed</h2>
+            <p class="section-intro">Screenshots were captured from the local demo build. No real files were moved or modified.</p>
+          </div>
+        </div>
+        <div class="gallery">
+          <figure class="wide"><img src="ux-audit-assets/01-welcome.jpg" alt="Diskloom welcome screen with a prominent Choose a folder to scan button and quick-start cards"><figcaption><b>First run:</b> excellent value proposition, privacy reassurance, clear primary action, and useful quick starts.</figcaption></figure>
+          <figure><img src="ux-audit-assets/02-disk-map.jpg" alt="Diskloom disk map showing a large sunburst chart and details table"><figcaption><b>Core map:</b> visually distinctive, but the unlabeled, hover-dependent chart and inaccurate legend place too much interpretive burden on the user.</figcaption></figure>
+          <figure><img src="ux-audit-assets/03-minimum-window.jpg" alt="Diskloom disk map at the minimum supported 980 by 680 window size"><figcaption><b>980×680:</b> the chart remains usable, while details-panel names and adjacent icon controls become cramped.</figcaption></figure>
+          <figure><img src="ux-audit-assets/04-duplicates.jpg" alt="Diskloom duplicate results with two files already selected for Trash"><figcaption><b>Duplicates:</b> clear grouping and retention labels, but cleanup begins with two files selected and no persistent scan-root context.</figcaption></figure>
+          <figure><img src="ux-audit-assets/05-benchmark.jpg" alt="Diskloom benchmark screen with 128 MiB selected and the cache warning below the visible fold"><figcaption><b>Benchmark:</b> strong result layout; the cache warning is not visible before the user can run the default test.</figcaption></figure>
+        </div>
+      </section>
+
+      <section class="section" id="strengths">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">What is working</p>
+            <h2>Keep these product qualities</h2>
+          </div>
+        </div>
+        <div class="strengths">
+          <article class="strength"><span class="check">✓</span><h3>Clear, confidence-building onboarding</h3><p>The welcome screen says what Diskloom does, why it is private, and what to do next without over-explaining.</p></article>
+          <article class="strength"><span class="check">✓</span><h3>Responsible destructive-action copy</h3><p>Trash confirmations state the item count or size, explain recoverability, and autofocus Cancel instead of the destructive action.</p></article>
+          <article class="strength"><span class="check">✓</span><h3>High-quality modal accessibility</h3><p>Dialogs trap focus, respond to Escape, restore focus, mark the application inert, and use labelled/described relationships.</p></article>
+          <article class="strength"><span class="check">✓</span><h3>Useful duplicate comparison details</h3><p>Paths, timestamps, sizes, “Keeping” states, group expansion, and reclaimable totals make manual review practical.</p></article>
+          <article class="strength"><span class="check">✓</span><h3>Consistent visual and interaction system</h3><p>Navigation, panels, states, and accent colors create a coherent, focused utility rather than a generic admin interface.</p></article>
+          <article class="strength"><span class="check">✓</span><h3>Transparent privacy controls</h3><p>The About screen explains analytics inputs and exclusions clearly, with equally understandable allow and decline actions.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="roadmap">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Recommended roadmap</p>
+            <h2>A practical order of operations</h2>
+            <p class="section-intro">Sequence the work by user risk first, then polish. The effort labels are directional and should be validated against the implementation.</p>
+          </div>
+        </div>
+        <div class="plan">
+          <article class="plan-step"><span class="when">Now · 1</span><div><h3>Correct the chart’s meaning</h3><p>Fix or relabel the legend, add persistent segment labels/selection details, and document ring depth. This is the fastest trust win.</p></div><span class="effort">Small–medium</span></article>
+          <article class="plan-step"><span class="when">Now · 2</span><div><h3>Make exploration keyboard-operable</h3><p>Add accessible segment semantics and a synchronized hierarchical list. Verify with keyboard-only and a screen reader.</p></div><span class="effort">Medium–large</span></article>
+          <article class="plan-step"><span class="when">Now · 3</span><div><h3>Guard benchmark interpretation</h3><p>Move cache guidance beside the controls, recommend a preset, and mark affected results visibly.</p></div><span class="effort">Medium</span></article>
+          <article class="plan-step"><span class="when">Now · 4</span><div><h3>Reset duplicate cleanup to review-first</h3><p>Show scan root at every stage, start unselected, and turn the heuristic into an explicit “select recommended” action.</p></div><span class="effort">Small–medium</span></article>
+          <article class="plan-step"><span class="when">Next</span><div><h3>Strengthen minimum-window usability</h3><p>Protect full names, increase icon target sizes, and test the configured 980×680 minimum as a first-class layout.</p></div><span class="effort">Small</span></article>
+          <article class="plan-step"><span class="when">Next</span><div><h3>Improve wait states and visual accessibility</h3><p>Add elapsed/rate feedback, raise microcopy contrast, and complete reduced-motion coverage.</p></div><span class="effort">Small</span></article>
+        </div>
+      </section>
+
+      <section class="section" id="method">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Method and scope</p>
+            <h2>How this audit was conducted</h2>
+          </div>
+        </div>
+        <div class="method-grid">
+          <article class="method-card"><h3>Flows reviewed</h3><ul><li>First-run welcome and quick starts</li><li>Folder scan entry and loading state</li><li>Disk map exploration and details table</li><li>Duplicate analysis, selection, and confirmation</li><li>About/privacy controls</li><li>Benchmark setup and results</li></ul></article>
+          <article class="method-card"><h3>Evidence</h3><ul><li>Interactive local demo at 1280×720</li><li>Configured minimum size at 980×680</li><li>DOM, keyboard-focus, target-size, and overflow inspection</li><li>Targeted contrast calculations</li><li>React/CSS/Tauri source review</li></ul></article>
+          <article class="method-card"><h3>Audit lens</h3><p>Task clarity, information architecture, system feedback, error prevention, destructive-action safety, accessibility, responsive behavior, trust, and visual semantics.</p></article>
+          <article class="method-card"><h3>Limitations</h3><p>This is a focused expert review, not a full WCAG conformance audit or usability study. Demo data was used; long scans, permission failures, screen-reader output, and real device performance should receive separate validation.</p></article>
+        </div>
+      </section>
+
+      <footer>Prepared for Diskloom · version 2.0.10 · July 21, 2026</footer>
+    </main>
+  </div>
+
+  <script>
+    const filters = [...document.querySelectorAll('.filter')];
+    const findings = [...document.querySelectorAll('.finding')];
+    filters.forEach((button) => button.addEventListener('click', () => {
+      const value = button.dataset.filter;
+      filters.forEach((candidate) => candidate.classList.toggle('active', candidate === button));
+      findings.forEach((finding) => { finding.hidden = value !== 'all' && finding.dataset.severity !== value; });
+    }));
+  </script>
+</body>
+</html>
