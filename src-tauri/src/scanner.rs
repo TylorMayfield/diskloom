@@ -24,6 +24,9 @@ const VISUAL_CHILDREN: usize = 16;
 const SCAN_DB_PREFIX: &str = "diskloom-scan-";
 const SCAN_DB_SUFFIX: &str = ".sqlite";
 const LEGACY_DB_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+const SCAN_WORKERS_ENV: &str = "DISKLOOM_SCAN_WORKERS";
+const MAX_SCAN_WORKERS: usize = 24;
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct ScanSession {
     pub id: String,
@@ -88,9 +91,28 @@ struct Counts {
     items: AtomicU64,
     inaccessible: AtomicU64,
     excluded: AtomicU64,
+    progress_started: Instant,
+    last_progress_ms: AtomicU64,
     physical: Mutex<HashSet<PhysicalId>>,
     #[cfg(test)]
     workers: Mutex<HashSet<std::thread::ThreadId>>,
+}
+
+struct PersistedScan {
+    db: Connection,
+    persistence_ms: u64,
+    indexing_ms: u64,
+}
+
+#[derive(Default)]
+struct FolderSummary {
+    size: u64,
+    child_count: usize,
+    // A folder is a set of uniquely named child entries, so combine entry hashes
+    // commutatively. This keeps fingerprints stable without sorting or retaining
+    // every child node after its aggregate has been consumed.
+    xor: [u8; 32],
+    sum: [u8; 32],
 }
 
 #[cfg(unix)]
@@ -191,6 +213,19 @@ fn physical_id(path: &Path, _: &fs::Metadata) -> Option<PhysicalId> {
 }
 
 #[cfg(unix)]
+fn has_multiple_links(meta: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    meta.nlink() > 1
+}
+
+// Keep the existing conservative check on Windows until the scanner can obtain
+// the link count without opening every file a second time.
+#[cfg(windows)]
+fn has_multiple_links(_: &fs::Metadata) -> bool {
+    true
+}
+
+#[cfg(unix)]
 fn volume_used(path: &Path) -> Option<u64> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
@@ -263,7 +298,8 @@ fn create_table(db: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-fn persist(mut db: Connection, nodes: Receiver<Arc<IndexedNode>>) -> Result<Connection, String> {
+fn persist(mut db: Connection, nodes: Receiver<Arc<IndexedNode>>) -> Result<PersistedScan, String> {
+    let started = Instant::now();
     let transaction = db.transaction().map_err(|e| e.to_string())?;
     {
         let mut statement = transaction
@@ -277,11 +313,17 @@ fn persist(mut db: Connection, nodes: Receiver<Arc<IndexedNode>>) -> Result<Conn
             save(&mut statement, &node)?;
         }
     }
+    let persistence_ms = started.elapsed().as_millis() as u64;
+    let indexing_started = Instant::now();
     transaction
         .execute_batch("CREATE INDEX nodes_parent_size ON nodes(parent,size DESC,name ASC);")
         .map_err(|e| e.to_string())?;
     transaction.commit().map_err(|e| e.to_string())?;
-    Ok(db)
+    Ok(PersistedScan {
+        db,
+        persistence_ms,
+        indexing_ms: indexing_started.elapsed().as_millis() as u64,
+    })
 }
 
 fn completed(node: IndexedNode, output: &SyncSender<Arc<IndexedNode>>) -> Arc<IndexedNode> {
@@ -290,6 +332,66 @@ fn completed(node: IndexedNode, output: &SyncSender<Arc<IndexedNode>>) -> Arc<In
     // writer's original error is returned to the caller.
     let _ = output.send(node.clone());
     node
+}
+
+fn entry_digest(name: &str, revision: &str) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    hash.update(name.as_bytes());
+    hash.update([0]);
+    hash.update(revision.as_bytes());
+    hash.finalize().into()
+}
+
+impl FolderSummary {
+    fn add(&mut self, node: &IndexedNode) {
+        self.add_entry(&node.name, &node.revision, node.size);
+    }
+
+    fn add_entry(&mut self, name: &str, revision: &str, size: u64) {
+        self.size = self.size.saturating_add(size);
+        self.child_count += 1;
+        let digest = entry_digest(name, revision);
+        for (index, byte) in digest.into_iter().enumerate() {
+            self.xor[index] ^= byte;
+            self.sum[index] = self.sum[index].wrapping_add(byte);
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.size = self.size.saturating_add(other.size);
+        self.child_count += other.child_count;
+        for index in 0..self.xor.len() {
+            self.xor[index] ^= other.xor[index];
+            self.sum[index] = self.sum[index].wrapping_add(other.sum[index]);
+        }
+        self
+    }
+
+    fn revision(&self, meta: &fs::Metadata) -> String {
+        let mut hash = Sha256::new();
+        hash.update(stat_revision(meta, "folder"));
+        hash.update(self.child_count.to_le_bytes());
+        hash.update(self.xor);
+        hash.update(self.sum);
+        hex::encode(hash.finalize())
+    }
+}
+
+fn claim_progress(last_progress_ms: &AtomicU64, elapsed_ms: u64) -> bool {
+    let interval_ms = PROGRESS_INTERVAL.as_millis() as u64;
+    let mut previous = last_progress_ms.load(Ordering::Relaxed);
+    while elapsed_ms.saturating_sub(previous) >= interval_ms {
+        match last_progress_ms.compare_exchange_weak(
+            previous,
+            elapsed_ms,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return true,
+            Err(observed) => previous = observed,
+        }
+    }
+    false
 }
 
 fn walk<F>(
@@ -312,7 +414,8 @@ where
         .unwrap()
         .insert(std::thread::current().id());
     let items = counts.items.fetch_add(1, Ordering::Relaxed) + 1;
-    if items.is_multiple_of(200) {
+    let elapsed_ms = counts.progress_started.elapsed().as_millis() as u64;
+    if claim_progress(&counts.last_progress_ms, elapsed_ms) {
         progress(ScanProgress {
             path: path_string(target),
             items,
@@ -368,17 +471,21 @@ where
     }
     if !metadata.is_dir() {
         let kind = if metadata.is_file() { "file" } else { "other" };
-        let size = physical_id(target, &metadata).map_or(allocated, |id| {
-            let mut seen = counts
-                .physical
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if seen.insert(id) {
-                allocated
-            } else {
-                0
-            }
-        });
+        let size = if has_multiple_links(&metadata) {
+            physical_id(target, &metadata).map_or(allocated, |id| {
+                let mut seen = counts
+                    .physical
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if seen.insert(id) {
+                    allocated
+                } else {
+                    0
+                }
+            })
+        } else {
+            allocated
+        };
         let node = common(kind, size, false, 0, stat_revision(&metadata, kind));
         return Ok(completed(node, output));
     }
@@ -397,34 +504,30 @@ where
         }
     };
     let paths: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
-    let mut children: Vec<_> = paths
+    let summary = paths
         .into_par_iter()
-        .map(|path| walk(&path, Some(target), counts, progress, output))
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut size = allocated;
-    for child in &children {
-        size = size.saturating_add(child.size);
-    }
-    children.sort_by(|a, b| a.name.cmp(&b.name));
-    let mut hash = Sha256::new();
-    hash.update(stat_revision(&metadata, "folder"));
-    for child in &children {
-        hash.update([0]);
-        hash.update(child.name.as_bytes());
-        hash.update([0]);
-        hash.update(child.revision.as_bytes());
-    }
+        .try_fold(FolderSummary::default, |mut summary, path| {
+            let child = walk(&path, Some(target), counts, progress, output)?;
+            summary.add(&child);
+            Ok::<_, String>(summary)
+        })
+        .try_reduce(FolderSummary::default, |summary, other| {
+            Ok::<_, String>(summary.merge(other))
+        })?;
     let node = common(
         "folder",
-        size,
+        allocated.saturating_add(summary.size),
         false,
-        children.len(),
-        hex::encode(hash.finalize()),
+        summary.child_count,
+        summary.revision(&metadata),
     );
     Ok(completed(node, output))
 }
 
 fn parallelism(root: &Path) -> usize {
+    if let Some(workers) = configured_workers() {
+        return workers;
+    }
     let available = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(4);
@@ -436,11 +539,22 @@ fn parallelism(root: &Path) -> usize {
     parallelism_for(kind, available)
 }
 
+fn configured_workers() -> Option<usize> {
+    std::env::var(SCAN_WORKERS_ENV)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|workers| *workers > 0)
+        .map(|workers| workers.clamp(1, MAX_SCAN_WORKERS))
+}
+
 fn parallelism_for(kind: Option<DiskKind>, available: usize) -> usize {
     let available = available.max(1);
     match kind {
         Some(DiskKind::HDD) => available.clamp(1, 4),
-        Some(DiskKind::SSD) => available.saturating_mul(2).clamp(8, 24),
+        // Metadata-heavy APFS scans plateau well before the old 2x-core / 24
+        // worker limit on typical SSDs. An explicit env override remains
+        // available for measured device-specific tuning.
+        Some(DiskKind::SSD) => available.clamp(4, 12),
         _ => available.clamp(2, 8),
     }
 }
@@ -460,6 +574,8 @@ where
         items: AtomicU64::new(0),
         inaccessible: AtomicU64::new(0),
         excluded: AtomicU64::new(0),
+        progress_started: Instant::now(),
+        last_progress_ms: AtomicU64::new(0),
         physical: Mutex::new(HashSet::new()),
         #[cfg(test)]
         workers: Mutex::new(HashSet::new()),
@@ -562,17 +678,20 @@ pub fn scan(
     let emit_progress = |progress| {
         let _ = app.emit("scan-progress", progress);
     };
-    let discovered = discover(
-        &root,
-        parallelism(&root),
-        &emit_progress,
-        &node_sender,
-        cancel,
-    );
+    let worker_count = parallelism(&root);
+    let discovery_started = Instant::now();
+    let discovered = discover(&root, worker_count, &emit_progress, &node_sender, cancel);
+    let discovery_ms = discovery_started.elapsed().as_millis() as u64;
     drop(node_sender);
-    let db = writer
+    let persisted = writer
         .join()
         .map_err(|_| "Scan index writer stopped unexpectedly".to_string())??;
+    let finalization_started = Instant::now();
+    let PersistedScan {
+        db,
+        persistence_ms,
+        indexing_ms,
+    } = persisted;
     let (indexed, counts) = discovered?;
     let indexed = (*indexed).clone();
     let accessible_size = indexed.size;
@@ -602,6 +721,13 @@ pub fn scan(
         root: root_node,
         started_at: created_at.to_rfc3339(),
         duration_ms: started.elapsed().as_millis() as u64,
+        worker_count,
+        timings: ScanTimings {
+            discovery_ms,
+            persistence_ms,
+            indexing_ms,
+            finalization_ms: finalization_started.elapsed().as_millis() as u64,
+        },
         item_count,
         inaccessible_count,
         excluded_count,
@@ -727,24 +853,15 @@ fn current_revision(path: &Path) -> Result<(String, String), String> {
     if kind != "folder" {
         return Ok((kind.into(), stat_revision(&meta, kind)));
     }
-    let mut values = Vec::new();
+    let mut summary = FolderSummary::default();
     for entry in fs::read_dir(path).map_err(|e| e.to_string())?.flatten() {
         let (name, rev) = (
             entry.file_name().to_string_lossy().into_owned(),
             current_revision(&entry.path())?.1,
         );
-        values.push((name, rev))
+        summary.add_entry(&name, &rev, 0);
     }
-    values.sort();
-    let mut hash = Sha256::new();
-    hash.update(stat_revision(&meta, "folder"));
-    for (name, rev) in values {
-        hash.update([0]);
-        hash.update(name);
-        hash.update([0]);
-        hash.update(rev)
-    }
-    Ok((kind.into(), hex::encode(hash.finalize())))
+    Ok((kind.into(), summary.revision(&meta)))
 }
 pub fn item_matches(item: &ReclaimItem) -> bool {
     current_revision(Path::new(&item.path))
@@ -793,7 +910,7 @@ mod tests {
         )
         .unwrap();
         drop(sender);
-        let db = writer.join().unwrap().unwrap();
+        let db = writer.join().unwrap().unwrap().db;
         (db, discovered.0, discovered.1)
     }
 
@@ -974,7 +1091,7 @@ mod tests {
         let (sender, receiver) = sync_channel(1);
         sender.send(node).unwrap();
         drop(sender);
-        let db = persist(db, receiver).unwrap();
+        let db = persist(db, receiver).unwrap().db;
 
         let stored = find(&db, Path::new("/large-id")).unwrap().unwrap();
         assert_eq!(stored.device as u64, u64::MAX);
@@ -1027,11 +1144,42 @@ mod tests {
     #[test]
     fn storage_kind_sets_a_bounded_worker_count() {
         assert_eq!(parallelism_for(Some(DiskKind::HDD), 64), 4);
-        assert_eq!(parallelism_for(Some(DiskKind::SSD), 64), 24);
+        assert_eq!(parallelism_for(Some(DiskKind::SSD), 64), 12);
         assert_eq!(parallelism_for(None, 64), 8);
-        assert_eq!(parallelism_for(Some(DiskKind::SSD), 6), 12);
-        assert_eq!(parallelism_for(Some(DiskKind::SSD), 2), 8);
+        assert_eq!(parallelism_for(Some(DiskKind::SSD), 6), 6);
+        assert_eq!(parallelism_for(Some(DiskKind::SSD), 2), 4);
         assert_eq!(parallelism_for(None, 1), 2);
         assert_eq!(parallelism_for(Some(DiskKind::HDD), 1), 1);
+    }
+
+    #[test]
+    fn folder_summary_is_order_independent_and_detects_a_child_change() {
+        let mut first = FolderSummary::default();
+        first.add_entry("alpha", "one", 3);
+        first.add_entry("beta", "two", 5);
+
+        let mut second = FolderSummary::default();
+        second.add_entry("beta", "two", 5);
+        second.add_entry("alpha", "one", 3);
+
+        let root = fixture("folder-summary-test");
+        let meta = fs::metadata(&root).unwrap();
+        assert_eq!(first.revision(&meta), second.revision(&meta));
+        assert_eq!(first.size, 8);
+
+        second = FolderSummary::default();
+        second.add_entry("alpha", "changed", 3);
+        second.add_entry("beta", "two", 5);
+        assert_ne!(first.revision(&meta), second.revision(&meta));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn progress_claim_is_time_limited() {
+        let last = AtomicU64::new(0);
+        assert!(!claim_progress(&last, 249));
+        assert!(claim_progress(&last, 250));
+        assert!(!claim_progress(&last, 499));
+        assert!(claim_progress(&last, 500));
     }
 }

@@ -41,7 +41,7 @@ export const demoApi: DiskloomApi = {
     { id: 'home', name: 'Home folder', path: 'Home', kind: 'home' },
     { id: 'storage', name: 'Demo Storage', path: root.path, kind: 'volume', totalBytes: 512 * 1024 ** 3, freeBytes: 328 * 1024 ** 3 },
   ],
-  scan: async () => ({ id: 'demo-scan', root, startedAt: now, durationMs: 184, itemCount: 13, inaccessibleCount: 0, excludedCount: 0, unknownCount: 0, accessibleSize: root.size, accounting: 'allocated', unaccountedSize: null }),
+  scan: async () => ({ id: 'demo-scan', root, startedAt: now, durationMs: 184, workerCount: 4, timings: { discoveryMs: 131, persistenceMs: 34, indexingMs: 11, finalizationMs: 8 }, itemCount: 13, inaccessibleCount: 0, excludedCount: 0, unknownCount: 0, accessibleSize: root.size, accounting: 'allocated', unaccountedSize: null }),
   cancelScan: async () => undefined,
   getChildren: async (_scanId, path, offset = 0, limit = 60) => {
     const items = find(root, path)?.children ?? []

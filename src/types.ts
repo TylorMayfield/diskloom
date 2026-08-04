@@ -13,6 +13,8 @@ export type ScanResult = {
   root: DiskNode
   startedAt: string
   durationMs: number
+  workerCount: number
+  timings: { discoveryMs: number; persistenceMs: number; indexingMs: number; finalizationMs: number }
   itemCount: number
   inaccessibleCount: number
   excludedCount: number

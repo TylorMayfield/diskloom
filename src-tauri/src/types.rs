@@ -16,11 +16,22 @@ pub struct DiskNode {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScanTimings {
+    pub discovery_ms: u64,
+    pub persistence_ms: u64,
+    pub indexing_ms: u64,
+    pub finalization_ms: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     pub id: String,
     pub root: DiskNode,
     pub started_at: String,
     pub duration_ms: u64,
+    pub worker_count: usize,
+    pub timings: ScanTimings,
     pub item_count: u64,
     pub inaccessible_count: u64,
     pub excluded_count: u64,

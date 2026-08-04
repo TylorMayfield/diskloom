@@ -55,6 +55,16 @@ pnpm build
 
 The filesystem scanner, duplicate finder, cleanup safeguards, and storage benchmark run locally in the Rust backend. The React renderer communicates with it through typed Tauri commands and events.
 
+### Scanner tuning
+
+Diskloom automatically uses a conservative worker limit for HDDs, SSDs, and unknown storage. To profile a particular drive, launch the app with `DISKLOOM_SCAN_WORKERS` set to a value from 1 to 24, then compare the phase timings in the completed scan's map legend tooltip. For example:
+
+```bash
+DISKLOOM_SCAN_WORKERS=8 pnpm dev
+```
+
+Test 4, 8, 12, and 16 workers separately on local SSD, HDD, and network volumes; retain the fastest setting that keeps the system responsive. The default is 12 workers maximum on SSDs, 4 on HDDs, and 8 for storage whose kind cannot be identified.
+
 ## Support
 
 [Support this free and open-source project on Ko-fi](https://ko-fi.com/tylormayfield).
