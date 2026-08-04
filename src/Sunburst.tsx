@@ -55,17 +55,28 @@ export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize 
   const interactiveNodes = useMemo(() => [root, ...segments.map(({ node }) => node)], [root, segments])
   const [hovered, setHovered] = useState<DiskNode | null>(null)
   const [chartHasFocus, setChartHasFocus] = useState(false)
+  const [keyboardMode, setKeyboardMode] = useState(false)
   const [focusedPath, setFocusedPath] = useState(selected.path)
   const [view, setView] = useState<'chart' | 'list'>('chart')
   const [menu, setMenu] = useState<ChartMenu | null>(null)
   const chartItemRefs = useRef(new Map<string, SVGElement>())
   const listItemRefs = useRef(new Map<string, HTMLButtonElement>())
   const pendingFocus = useRef<FocusTarget | null>(null)
+  const inputMode = useRef<'keyboard' | 'pointer'>('pointer')
   const titleId = useId()
   const instructionsId = useId()
   const contentId = useId()
   const keyboardFocused = chartHasFocus ? interactiveNodes.find((node) => node.path === focusedPath) ?? null : null
   const focus = hovered ?? keyboardFocused ?? selected
+
+  useEffect(() => {
+    const noteKeyboardInput = () => {
+      inputMode.current = 'keyboard'
+      setKeyboardMode(true)
+    }
+    document.addEventListener('keydown', noteKeyboardInput)
+    return () => document.removeEventListener('keydown', noteKeyboardInput)
+  }, [])
 
   useEffect(() => {
     const nextPath = interactiveNodes.some((node) => node.path === selected.path) ? selected.path : root.path
@@ -104,8 +115,18 @@ export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize 
   }
 
   const activateNode = (node: DiskNode, target: FocusTarget) => {
-    pendingFocus.current = node.path === selected.path ? null : target
+    pendingFocus.current = node.path === selected.path || inputMode.current === 'pointer' ? null : target
     onSelect(node)
+  }
+
+  const useKeyboard = () => {
+    inputMode.current = 'keyboard'
+    setKeyboardMode(true)
+  }
+
+  const usePointer = () => {
+    inputMode.current = 'pointer'
+    setKeyboardMode(false)
   }
 
   const moveChartFocus = (event: ReactKeyboardEvent<SVGElement>, nextIndex: number) => {
@@ -117,6 +138,7 @@ export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize 
   }
 
   const handleChartKeyDown = (event: ReactKeyboardEvent<SVGElement>, node: DiskNode) => {
+    useKeyboard()
     const index = interactiveNodes.findIndex((item) => item.path === node.path)
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
@@ -156,7 +178,8 @@ export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize 
       <button type="button" aria-pressed={view === 'chart'} aria-controls={contentId} onClick={() => setView('chart')}>Chart</button>
       <button type="button" aria-pressed={view === 'list'} aria-controls={contentId} onClick={() => setView('list')}>List</button>
     </div>
-    {view === 'chart' ? <svg id={contentId} key={root.path} className="sunburst" viewBox="0 0 600 600" role="group" aria-labelledby={`${titleId} ${instructionsId}`}
+    {view === 'chart' ? <svg id={contentId} key={root.path} className={`sunburst${keyboardMode ? ' keyboard-mode' : ''}`} viewBox="0 0 600 600" role="group" aria-labelledby={`${titleId} ${instructionsId}`}
+      onPointerDownCapture={usePointer}
       onFocusCapture={() => setChartHasFocus(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setChartHasFocus(false) }}>
       <title id={titleId}>Interactive disk map for {root.name}</title>
       <desc id={instructionsId}>Use the arrow keys to explore items. Press Enter or Space to inspect the focused item.</desc>
@@ -179,7 +202,7 @@ export function Sunburst({ root, selected, onSelect, onRequestTrash, formatSize 
       <g aria-hidden="true">
         <text aria-hidden="true" x="300" y="286" textAnchor="middle" className="center-size">{formatSize(focus.size)}</text>
         <text aria-hidden="true" x="300" y="316" textAnchor="middle" className="center-name">{focus.name}</text>
-        <text aria-hidden="true" x="300" y="340" textAnchor="middle" className="center-hint">{hovered ? 'click to inspect' : chartHasFocus ? 'press Enter to inspect' : 'hover or use arrow keys'}</text>
+        <text aria-hidden="true" x="300" y="340" textAnchor="middle" className="center-hint">{hovered ? 'click to inspect' : keyboardMode && chartHasFocus ? 'press Enter to inspect' : 'hover to inspect'}</text>
       </g>
     </svg> : <section id={contentId} className="sunburst-list" aria-labelledby={`${titleId}-list`}>
       <div className="sunburst-list-heading"><p id={`${titleId}-list`}>Disk map hierarchy</p><span>Select an item to inspect it</span></div>
