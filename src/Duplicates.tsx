@@ -44,12 +44,8 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
       return next
     })
     setSelected((current) => {
-      const next = new Set(current)
-      result.groups.forEach((group) => {
-        const keep = retained[group.id] ?? oldestCopy(group.files).path
-        if (!retained[group.id]) group.files.forEach((file) => { if (file.path !== keep) next.add(file.path) })
-      })
-      return next
+      const available = new Set(result.groups.flatMap((group) => group.files.map((file) => file.path)))
+      return new Set([...current].filter((path) => available.has(path)))
     })
     setExpanded((current) => new Set([...current, ...result.groups.map((group) => group.id)]))
   }, [result])
@@ -61,9 +57,17 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
     setRetained((current) => ({ ...current, [group.id]: path }))
     setSelected((current) => {
       const next = new Set(current)
-      group.files.forEach((file) => file.path === path ? next.delete(file.path) : next.add(file.path))
+      next.delete(path)
       return next
     })
+  }
+
+  const selectSuggestedCopies = () => {
+    if (!result) return
+    setSelected(new Set(result.groups.flatMap((group) => {
+      const keep = retained[group.id] ?? oldestCopy(group.files).path
+      return group.files.filter((file) => file.path !== keep).map((file) => file.path)
+    })))
   }
 
   const clean = async () => {
@@ -107,7 +111,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
   if (!result.groups.length) return <section className="duplicates-state"><div className="duplicate-hero"><Copy size={48}/></div><h2>No duplicates found</h2><p>{result.scannedFileCount.toLocaleString()} files inspected and {result.hashedFileCount.toLocaleString()} candidates compared.</p><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></section>
 
   return <><section className="duplicates-results">
-    <div className="duplicates-summary"><div><p className="eyebrow">RECLAIMABLE SPACE</p><strong>{formatSize(result.totalWastedSpace)}</strong></div><div><b>{result.groups.length.toLocaleString()}</b><span>duplicate groups</span></div><div><b>{result.duplicateFileCount.toLocaleString()}</b><span>extra copies</span></div><button className="secondary-btn" onClick={onAnalyze}>Analyze again</button></div>
+    <div className="duplicates-summary"><div><p className="eyebrow">RECLAIMABLE SPACE</p><strong>{formatSize(result.totalWastedSpace)}</strong><small className="duplicates-root" title={rootPath}>{rootPath}</small></div><div><b>{result.groups.length.toLocaleString()}</b><span>duplicate groups</span></div><div><b>{result.duplicateFileCount.toLocaleString()}</b><span>extra copies</span></div><div className="duplicates-summary-actions"><button className="secondary-btn" onClick={selectSuggestedCopies}>Select suggested copies</button><button className="text-btn" onClick={onAnalyze}>Analyze again</button></div></div>
     <Theme className="duplicate-table-theme" appearance="dark" accentColor="amber" grayColor="slate" radius="medium" scaling="90%" hasBackground={false}>
     <div className="duplicate-table-wrap"><Table.Root className="duplicate-table" variant="surface" layout="fixed" size="2">
       <Table.Header><Table.Row>
@@ -133,7 +137,7 @@ export function Duplicates({ rootPath, result, progress, analyzing, onAnalyze, o
         </Table.Row>)}</Fragment>
       })}</Table.Body>
     </Table.Root></div></Theme>
-    <div className="cleanup-bar"><div><b>{selectedFiles.length.toLocaleString()} selected</b><span>{formatSize(reclaimable)} reclaimable</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => setConfirmCleanup(true)}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
+    <div className="cleanup-bar"><div role="status" aria-live="polite" aria-atomic="true"><b>{selectedFiles.length.toLocaleString()} selected</b><span>{selectedFiles.length ? `${formatSize(reclaimable)} reclaimable` : 'Review each group or select the suggested extra copies'}</span></div><button className="danger-btn" disabled={!selectedFiles.length || cleaning} onClick={() => setConfirmCleanup(true)}><Trash2 size={16}/>{cleaning ? 'Moving…' : 'Move to Trash'}</button></div>
   </section>
     {confirmCleanup && <Modal backdropClassName="reclaim-result-backdrop" className="reclaim-result trash-confirm" labelledBy="duplicate-cleanup-title" describedBy="duplicate-cleanup-description" onClose={() => setConfirmCleanup(false)}><div className="reclaim-result-mark trash-confirm-mark"><Trash2 size={27}/></div><p className="eyebrow">CONFIRM CLEANUP</p><h2 id="duplicate-cleanup-title">Move {selectedFiles.length.toLocaleString()} duplicate{selectedFiles.length === 1 ? '' : 's'} to Trash?</h2><p id="duplicate-cleanup-description">This can free {formatSize(reclaimable)}. Diskloom will retain at least one copy from every duplicate group, and removed files remain recoverable until the system Trash is emptied.</p><div className="reclaim-result-actions"><button className="secondary-btn" data-autofocus onClick={() => setConfirmCleanup(false)}>Cancel</button><button className="danger-btn" onClick={() => void clean()}><Trash2 size={15}/> Move to Trash</button></div></Modal>}
   </>

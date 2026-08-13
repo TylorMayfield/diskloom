@@ -83,8 +83,8 @@ export function Modal({
   }, [])
 
   return createPortal(
-    <div className={backdropClassName} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section ref={dialogRef} className={className} role="dialog" aria-modal="true" aria-label={ariaLabel} aria-labelledby={labelledBy} aria-describedby={describedBy} tabIndex={-1}>
+    <div className={backdropClassName} role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section ref={dialogRef} className={className} data-modal-surface role="dialog" aria-modal="true" aria-label={ariaLabel} aria-labelledby={labelledBy} aria-describedby={describedBy} tabIndex={-1}>
         {children}
       </section>
     </div>,
